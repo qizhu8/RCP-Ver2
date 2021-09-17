@@ -1,7 +1,3 @@
-# add parent directory to path
-
-
-
 import os
 import sys
 from collections import deque
@@ -12,8 +8,8 @@ from typing import List
 
 sys.path.append(os.path.normpath(os.path.join(
     os.path.abspath(__file__), '..', '..')))
-from common import BaseRNG, RangeUniform
 from common import Packet
+from common import BaseRNG, RangeUniform
 
 class BaseBuffer(object):
     """
@@ -35,12 +31,14 @@ class BaseBuffer(object):
 
     def initLogger(self, loglevel):
         self.logger = logging.getLogger(type(self).__name__)
-        sh = logging.StreamHandler()
-        formatter = logging.Formatter(
-            '%(levelname)s:{classname}:%(message)s'.format(classname=type(self).__name__))
-        sh.setFormatter(formatter)
         self.logger.setLevel(loglevel)
-        self.logger.addHandler(sh)
+
+        if not self.logger.handlers:
+            sh = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(levelname)s:{classname}:%(message)s'.format(classname=type(self).__name__))
+            sh.setFormatter(formatter)
+            # self.logger.addHandler(sh)
 
     def isFull(self) -> bool:
         """check whether the channel can still accept packets"""
@@ -184,6 +182,11 @@ class PriorityBuffer(BaseBuffer):
         self.PriorityQueue = []
 
         self.initLogger(self.loglevel)
+    
+    def __str__(self) -> None:
+        s = "ChannelBuffer:\n\tbufferType:{bufferType}\n\tcapacity:{capacity}\n\tsize:{size}\n\tdelayModel:{delayModel}".format(
+            capacity=self.bufferSize, bufferType=type(self).__name__, size=self.nPktsInBuf, delayModel=self.rng.__str__())
+        return s
 
     def enqueue(self, packet: Packet, time: int) -> bool:
         """
@@ -227,11 +230,11 @@ class PriorityBuffer(BaseBuffer):
             self.nPktsInBuf -= 1
 
         if(len(pktList)):
-            self.logger.debug("[+] @{time} Dequeu {nPkt} pkts {curSize}/{cap}".format(time=time,
-                                                                                      nPkt=len(pktList), curSize=self.nPktsInBuf, cap=self.bufferSize))
+            self.logger.debug("[+] @{time} Dequeu {nPkt} pkts {curSize}/{cap}"
+            .format(time=time, nPkt=len(pktList), curSize=self.nPktsInBuf, cap=self.bufferSize))
         else:
-            self.logger.debug("[-] @{time} Empty queue {curSize}/{cap}".format(time=time,
-                                                                               curSize=self.nPktsInBuf, cap=self.bufferSize))
+            self.logger.debug("[-] @{time} Empty queue {curSize}/{cap}".
+            format(time=time, curSize=self.nPktsInBuf, cap=self.bufferSize))
 
         return pktList
 
