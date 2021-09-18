@@ -92,10 +92,5 @@ class BaseTransportLayerProtocol(object):
         """
         raise NotImplementedError
 
-
-
-
-        self.timeElapse()
-
     def timeElapse(self):
         self.time += 1
