@@ -6,8 +6,6 @@ class PacketType(Enum):
     ACK = 1
     NACK = 2
 
-
-
 class Packet(object):
     """
     Packet:
@@ -31,6 +29,9 @@ class Packet(object):
             txTime=self.txTime, genTime=self.genTime,
             type=self.pktType.name)
         return s
+    
+    def __lt__(self, other):
+        return (self.txTime < other.txTime)
     
 if __name__ == "__main__":
     pkt1 = Packet(pid=1, suid=101, duid=111, genTime=500,

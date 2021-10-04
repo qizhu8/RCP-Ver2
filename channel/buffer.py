@@ -200,7 +200,7 @@ class PriorityBuffer(BaseBuffer):
         """
         if self.isFull():
             self.logger.debug(
-                "[-] @{time} Queue full {curSize}/{cap} pkt {pkt}".format(curSize=self.nPktsInBuf, cap=self.bufferSize, time=time, pkt=packet))
+                "[-] @{time} Queue full {curSize}/{cap}. Ignore pkt {pkt}".format(curSize=self.nPktsInBuf, cap=self.bufferSize, time=time, pkt=packet))
             return False
 
         dequeueTime = time + self.rng.nextNum()
@@ -270,23 +270,23 @@ if __name__ == "__main__":
     buffer = PriorityBuffer(bufferSize=5, rng=RangeUniform(
         3, 10), loglevel=logging.DEBUG)
     buffer.enqueue(packet=Packet(pid=0, duid=88), time=0)  # deque @ 9
-    buffer.enqueue(packet=Packet(pid=1, duid=88), time=0)  # deque @ 6
-    buffer.enqueue(packet=Packet(pid=2, duid=88), time=1)  # deque @ 10
-    buffer.enqueue(packet=Packet(pid=3, duid=88), time=1)  # deque @ 7
-    buffer.enqueue(packet=Packet(pid=4, duid=88), time=2)  # deque @ 5
+    buffer.enqueue(packet=Packet(pid=1, duid=88), time=0)  # deque @ 9
+    buffer.enqueue(packet=Packet(pid=2, duid=88), time=1)  # deque @ 4
+    buffer.enqueue(packet=Packet(pid=3, duid=88), time=1)  # deque @ 8
+    buffer.enqueue(packet=Packet(pid=4, duid=88), time=2)  # deque @ 12
     assert buffer.isFull() == True, "buffer should be full now"
     # expect to see full buffer message
     buffer.enqueue(packet=Packet(pid=5, duid=88), time=2)  # deque @
 
-    pktList = buffer.dequeue(time=4)  # no pkt is expected
-    assert pktList == [], "pktList should be an empty list"
-
-    pktList = buffer.dequeue(time=5)  # should see packet pid=4
+    pktList = buffer.dequeue(time=4)  # expect packet pid=2
     assert len(pktList) == 1, "pktList should only contain one packet"
     print(pktList[0])
 
+    pktList = buffer.dequeue(time=5)  # should no
+    assert len(pktList) == 0, "pktList should be empty, but see " + len(pktList)+" packets"
+
     # should see four packets with pid 1 3 0 2
-    pktList = buffer.dequeue(time=10)
+    pktList = buffer.dequeue(time=12)
     for pkt in pktList:
         print(pkt)
     assert buffer.isEmpty() == True, "buffer should be empty now"

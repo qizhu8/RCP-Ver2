@@ -1,6 +1,5 @@
 import random
 
-
 class BaseRNG(object):
 
     def __init__(self):
@@ -23,7 +22,7 @@ class RangeUniform(BaseRNG):
             self.low, self.high = b, a
 
     def nextNum(self) -> int:
-        return random.randrange(self.low, self.high+1, 1)
+        return random.randint(self.low, self.high)
     
     def __str__(self) -> str:
         s = "Random Integer Generator in [{a}, {b}]".format(a=self.low, b=self.high)

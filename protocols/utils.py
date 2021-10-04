@@ -1,4 +1,11 @@
 import logging
+import os, sys
+
+# add parent directory to path
+sys.path.append(os.path.normpath(os.path.join(
+    os.path.abspath(__file__), '..', '..')))
+
+from common.packet import Packet
 
 class Window(object):
     """
@@ -12,7 +19,6 @@ class Window(object):
         "maxWinCap": 0, # maximum number of pkts in buffer
     }
     
-
     def __init__(self, uid, cwnd:int=-1, maxPktTxDDL=-1, maxTxAttempts=-1, logLevel=logging.DEBUG):
 
         self.uid = uid
@@ -39,6 +45,9 @@ class Window(object):
 
         # performance check
         self.perfDict = Window.perfDictDefault
+    
+    def isPktInWindow(self, pkt: Packet)->bool:
+        return pkt.pid in self.buffer
 
     def reset(self):
         self.perfDict = Window.perfDictDefault
@@ -47,7 +56,6 @@ class Window(object):
         self.maxPktTxDDL = self.defaultValue["maxPktTxDDL"]
         self.maxTxAttempts = self.defaultValue["maxTxAttempts"]
         self.cwnd = self.defaultValue["cwnd"]
-
 
     def bufferSize(self):
         """
@@ -65,9 +73,8 @@ class Window(object):
         """check whether the buffer can hold another new packet"""
         return self.availSpace() > 0
 
-    
     def pushPkts(self, curTime, pktList):
-        if isinstance(pktList, Packet):
+        if not isinstance(pktList, list):
             pktList = [pktList]
         
         for pkt in pktList:
@@ -75,7 +82,6 @@ class Window(object):
             if pid not in self.buffer:
                 if self._hasSpace():
                     self.buffer[pid] = self._genNewPktInfoFromPkt(pkt)
-
 
                     logging.info("included pkt {pid}. {bufferSize} pkts in buffer (size={cwnd})".format(pid=pid, bufferSize=self.bufferSize(), cwnd=self.cwnd))
 
