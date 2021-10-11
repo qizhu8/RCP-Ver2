@@ -1,23 +1,24 @@
-from collections import deque
+import os
+import sys
 import logging
-import sys, os
+from typing import List
+from collections import deque
 
-# add parent directory to path
-sys.path.append(os.path.normpath(os.path.join(
-    os.path.abspath(__file__), '..', '..')))
-from common.packet import Packet
-from utils import Window
+from .utils import Window
+from DLRCP.common import Packet
+
 
 class RTTEst(object):
     """
     RTT Estimator follows RFC 6298
     """
+
     def __init__(self):
         self.SRTT = 1    # mean of RTT
         self.RTTVAR = 1  # variance of RTT
         self.RTO = 0
 
-    def Update(self, rtt, perfDict=None):
+    def Update(self, rtt, perfDict=None) -> None:
         """
         Same as RFC 6298, using auto-regression. But the true rtt estimation, or RTO 
         contains two more variables, RTTVAR (rtt variance) and SRTT (smoothed rtt).
@@ -41,12 +42,16 @@ class RTTEst(object):
         if perfDict:
             perfDict["rttHat"] = self.SRTT
             perfDict["rto"] = self.RTO
-    
+
     def getRTT(self) -> float:
         return self.SRTT
-    
+
     def getRTO(self) -> float:
         return self.RTO
+
+    def multiplyRTO(self, multiplier: float) -> None:
+        self.RTO *= multiplier
+        return
 
 
 class BaseTransportLayerProtocol(object):
@@ -55,9 +60,16 @@ class BaseTransportLayerProtocol(object):
     """
     LOGLEVEL = logging.INFO
     requiredKeys = {}
-    optionalKeys = {"maxTxAttempts": -1, "timeout": -1, "maxPktTxDDL": -1}
+    optionalKeys = {"maxTxAttempts": -1, "timeout": -1, "maxPktTxDDL": -1,
+                    # sum of power utility
+                    "alpha": 2,  # shape of utility function
+                    "beta1": 0.9, "beta2": 0.1,   # beta1: emphasis on delivery, beta2: emphasis on delay
+                    # time-discount delivery
+                    "timeDiscount": 0.9,  # reward will be raised to timeDiscound^delay
+                    "timeDivider": 100,
+                    }
 
-    def parseParamByMode(self, params, requiredKeys, optionalKeys):
+    def parseParamByMode(self, params: dict, requiredKeys: set, optionalKeys: dict) -> None:
         # required keys
         for key in requiredKeys:
             assert key in params, key + \
@@ -84,45 +96,49 @@ class BaseTransportLayerProtocol(object):
         6. declare (but no memory allocation) the Tx window if needed   self.window
         7. declare a dictionary to store tranmission performance        self.perfDict
         """
-        self.initLogger(loglevel) 
+        self.initLogger(loglevel)
 
         self.protocolName = self.__class__.__name__
         self.suid = suid
         self.duid = duid
 
-        # assign values to 
+        # assign values to
         self.parseParamByMode(params=params, requiredKeys=self.__class__.requiredKeys,
-                            optionalKeys=self.__class__.optionalKeys)
-        
-        self.RTTEst = RTTEst() # rtt, rto estimator
+                              optionalKeys=self.__class__.optionalKeys)
+
+        self.RTTEst = RTTEst()  # rtt, rto estimator
 
         # the buffer that new packets enters
-        self.txBuffer = deque(maxlen=None) # infinite queue
+        self.txBuffer = deque(maxlen=None)  # infinite queue
 
-        # window that store un-ACKed packets. 
+        # window that store un-ACKed packets.
         # Used by protocols that need a retransmission tracking
         self.window = Window(uid=self.suid)
 
         # performance recording dictionary
         self.perfDict = {
-            "distinctPktsRecv": 0,  #  # of packets received from the application layer
-            "distincPktsSent": 0,   #  pkts transmitted, not necessarily delivered or dropped
-            "deliveredPkts": 0,     #  pkts that are confirmed delivered
-            "receivedACK": 0,       #  # of ACK pkts received (include duplications)
-            "retransAttempts": 0,   #  # of retranmission attempts
-            "pktLossHat": 0,        #  estimation of the network packet loss (autoregression)
-            "rttHat": 0,            #  estimation of the RTT (autoregression)
-            "rto": 0,               #  estimation of the Retransmission Timeout (autoregression)
-            "deliveryRateHat": 0,   #  estimation of the current delivery rate (autoregression)
-            "maxWin": 0,            #  maximum # of pkts in Tx window so far
-            "loss": sys.maxsize,    #  loss of the decision brain (if applicable)
-            "convergeAt": sys.maxsize, # when the RL_brain works relatively good (converge) if applicable
-            }
+            "distinctPktsRecv": 0,  # of packets received from the application layer
+            "distinctPktsSent": 0,  # pkts transmitted, not necessarily delivered or dropped
+            "deliveredPkts": 0,  # pkts that are confirmed delivered
+            "receivedACK": 0,  # of ACK pkts received (include duplications)
+            "retransAttempts": 0,  # of retranmission attempts
+            # estimation of the network packet loss (autoregression)
+            "pktLossHat": 0,
+            "rttHat": 0,  # estimation of the RTT (autoregression)
+            # estimation of the Retransmission Timeout (autoregression)
+            "rto": 0,
+            # estimation of the current delivery rate (autoregression)
+            "deliveryRateHat": 0,
+            "maxWin": 0,  # maximum # of pkts in Tx window so far
+            "loss": sys.maxsize,  # loss of the decision brain (if applicable)
+            # when the RL_brain works relatively good (converge) if applicable
+            "convergeAt": sys.maxsize,
+        }
 
         # local time at the client side
-        self.time = 0
-    
-    def initLogger(self, loglevel):
+        self.time = -1
+
+    def initLogger(self, loglevel: int) -> None:
         """This function is implemented in multiple base classes. """
         self.logger = logging.getLogger(type(self).__name__)
         self.logger.setLevel(loglevel)
@@ -133,21 +149,64 @@ class BaseTransportLayerProtocol(object):
                 '%(levelname)s:{classname}:%(message)s'.format(classname=type(self).__name__))
             sh.setFormatter(formatter)
 
-    def acceptNewPkts(self, pktList):
+    def acceptNewPkts(self, pktList: List[Packet]) -> None:
         """
         Accept packets from application layer. 
         """
         self.perfDict["distinctPktsRecv"] += len(pktList)
         self.txBuffer.extend(pktList)
-    
-    def ticking(self, ACKPktList):
+        self.logger.debug("[+] Client {suid} @ {time} accept {nNewPkt} pkts".format(
+            suid=self.suid,
+            time=self.time,
+            nNewPkt=len(pktList)
+        ))
+
+    def ticking(self, ACKPktList: list = []) -> List[Packet]:
         """
         1. process feedbacks based on ACKPktList
         2. prepare packets to (re)transmit
         """
         raise NotImplementedError
-    
-    
 
-    def timeElapse(self):
+    def timeElapse(self) -> None:
         self.time += 1
+
+    def getPerf(self, verbose: bool = False) -> dict:
+        if verbose:
+            for key in self.perfDict:
+                print("{key}:{val}".format(key=key, val=self.perfDict[key]))
+        return self.perfDict
+
+    def getRTT(self) -> float:
+        return self.RTTEst.getRTT()
+
+    def getRTO(self) -> float:
+        return self.RTTEst.getRTO()
+
+    def calcUtility(self, delvyRate: float, avgDelay: float) -> float:
+        delvyRate_norm = delvyRate
+        avgDelay_norm = avgDelay
+
+        # utility used by ICCCN
+        """
+        UDP_dlvy, UDP_dly = 0.58306*0.9, 261.415*0.9
+        ARQ_dlvy, ARQ_dly = 0.86000*1.1, 1204.294*1.1
+
+        
+        dlvy = (deliveryRate - UDP_dlvy) / (ARQ_dlvy - UDP_dlvy)
+        q = (avgDelay - UDP_dly) / (ARQ_dly-UDP_dly)
+        r = -beta1*((1-dlvy)**alpha) - beta2*(q**alpha)
+        #"""
+
+        # sum of power
+        # r = -self.beta1*((1-delvyRate_norm)**self.alpha) - self.beta2*(avgDelay_norm**self.alpha)
+
+        # exponential
+        # print("timeDiscount", self.timeDiscount)
+        # print("avgDelay_norm", avgDelay_norm)
+        # print("delvyRate_norm", delvyRate_norm)
+        # print("alpha", self.alpha)
+        # print("timeDivider", self.timeDivider)
+        r = (self.timeDiscount**(avgDelay_norm/self.timeDivider)) * (delvyRate_norm**self.alpha)
+
+        return r

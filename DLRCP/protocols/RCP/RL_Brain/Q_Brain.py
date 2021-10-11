@@ -5,7 +5,7 @@ import random
 import numpy as np
 import logging
 import csv
-from DecisionBrain import DecisionBrain
+from .DecisionBrain import DecisionBrain
 
 
 class ThompsonSampling(object):
@@ -161,6 +161,8 @@ class Q_Brain(DecisionBrain):
         self.eta = eta
 
         self.QTable = QTable(nActions=self.nActions)
+
+        self.loss = sys.maxsize
 
     def _parseDecisionMethod(self, decisionMethod:str, args:dict={}):
         def _initArgmax(args):

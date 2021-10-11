@@ -7,21 +7,15 @@ Channel Model:
 
     Process time is discretized into time slots.
 """
-
-
-from buffer import FIFOBuffer, PriorityBuffer
 import random
 import os
 import sys
 import logging
 
 
-# add parent directory to path
-sys.path.append(os.path.normpath(os.path.join(
-    os.path.abspath(__file__), '..', '..')))
-
-from common import BaseRNG, RangeUniform
-from common import Packet
+from DLRCP.common import Packet
+from DLRCP.common import BaseRNG, RangeUniform
+from .buffer import FIFOBuffer, PriorityBuffer
 
 class BaseChannel(object):
     """
@@ -66,6 +60,11 @@ class BaseChannel(object):
         self.time = 0
         self.channelBuffer = None
 
+    def initBuffer(self):
+        self.time = 0
+        if self.channelBuffer:
+            self.channelBuffer.clearBuffer()
+
     def initLogger(self, loglevel):
         self.logger = logging.getLogger(type(self).__name__)
         self.logger.setLevel(loglevel)
@@ -77,8 +76,8 @@ class BaseChannel(object):
             sh.setFormatter(formatter)
             # self.logger.addHandler(sh)
 
-    def ifKeepPkt(self):
-        return random.random() <= self.pktDropProb
+    def ifKeepPkt(self) -> bool:
+        return random.random() >= self.pktDropProb
 
     def isFull(self) -> bool:
         return self.channelBuffer.isFull()
@@ -103,7 +102,7 @@ class BaseChannel(object):
             channelClass=type(
                 self).__name__, serviceRate=self.serviceRate, pktDropProb=self.pktDropProb, bufferState=self.channelBuffer.__str__()
         )
-        return s 
+        return s
 
     """
     channel operations
@@ -197,7 +196,7 @@ class RandomDelayChannel(BaseChannel):
             bufferSize=self.bufferSize, rng=self.rng, loglevel=logging.DEBUG)
 
         self.initLogger(loglevel)
-    
+
     def __str__(self):
         s = "channel:{channelClass}\n\tserviceRate:{serviceRate}\n\tdelayRNG:{rng}\n\tpktDropProb:{pktDropProb}\n{bufferState}".format(
             channelClass=type(
@@ -205,7 +204,7 @@ class RandomDelayChannel(BaseChannel):
         )
         return s
 
-    def acceptPkts(self, pktList: list=[]) -> None:
+    def acceptPkts(self, pktList: list = []) -> None:
         nPktAccpt = 0
         nPktFullBufDrop = 0
         availProsPower = self.serviceRate  # number of packets still can be processed
@@ -268,8 +267,9 @@ if __name__ == "__main__":
         pktList_get = channel.getPkts()
         channel.timeElapse()
         if channel.getChannelTime() in {3, 8, 9}:
-            assert len(pktList_get) == 1, "at time=3, 8, or 9, we expect one packet"
-        
+            assert len(
+                pktList_get) == 1, "at time=3, 8, or 9, we expect one packet"
+
         print("@ time={} feed {} pkts, pop {} pkts".format(
             channel.getChannelTime(), 0, len(pktList_get)))
 

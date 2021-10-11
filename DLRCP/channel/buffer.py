@@ -1,15 +1,13 @@
 import os
 import sys
-from collections import deque
 import heapq
 import logging
-
 from typing import List
+from collections import deque
 
-sys.path.append(os.path.normpath(os.path.join(
-    os.path.abspath(__file__), '..', '..')))
-from common import Packet
-from common import BaseRNG, RangeUniform
+
+from DLRCP.common.packet import Packet
+from DLRCP.common.randomNumberGenerator import BaseRNG, RangeUniform
 
 class BaseBuffer(object):
     """
@@ -47,6 +45,10 @@ class BaseBuffer(object):
     def isEmpty(self) -> bool:
         """check whether the channel is empty"""
         return self.nPktsInBuf == 0
+    
+    def clearBuffer(self) -> None:
+        """Clear anything that remains in the buffer. Prepare for a fresh new start"""
+        raise NotImplementedError
 
     def size(self) -> int:
         """return the number of packets in buffer"""
@@ -107,6 +109,10 @@ class FIFOBuffer(BaseBuffer):
         self.timeQueue = deque(maxlen=self.bufferSize)
 
         self.initLogger(self.loglevel)
+    
+    def clearBuffer(self):
+        self.FIFOQueue.clear()
+        self.timeQueue.clear()
 
     def enqueue(self, packet: Packet, time: int = 0) -> bool:
         """
@@ -187,6 +193,9 @@ class PriorityBuffer(BaseBuffer):
         s = "ChannelBuffer:\n\tbufferType:{bufferType}\n\tcapacity:{capacity}\n\tsize:{size}\n\tdelayModel:{delayModel}".format(
             capacity=self.bufferSize, bufferType=type(self).__name__, size=self.nPktsInBuf, delayModel=self.rng.__str__())
         return s
+    
+    def clearBuffer(self):
+        self.PriorityQueue.clear()
 
     def enqueue(self, packet: Packet, time: int) -> bool:
         """

@@ -6,6 +6,7 @@ class PacketType(Enum):
     ACK = 1
     NACK = 2
 
+
 class Packet(object):
     """
     Packet:
@@ -29,10 +30,35 @@ class Packet(object):
             txTime=self.txTime, genTime=self.genTime,
             type=self.pktType.name)
         return s
-    
-    def __lt__(self, other):
+
+    def toPktInfo(self, initTxTime=0, txAttempts=0, isFlying=True):
+        return PacketInfo(
+            pid=self.pid, suid=self.suid, duid=self.duid, genTime=self.genTime, txTime=self.txTime, initTxTime=initTxTime, txAttempts=txAttempts, isFlying=isFlying, pktType=self.pktType
+        )
+
+    def __lt__(self, other) -> bool:
         return (self.txTime < other.txTime)
-    
+
+
+class PacketInfo(Packet):
+    """
+    A data structure storing more details about a packet, except its payload.
+    """
+
+    def __init__(self, pid=0, suid=0, duid=0, genTime=0, txTime=0, initTxTime=0, txAttempts=0, isFlying=True, pktType=PacketType.MSG):
+        super().__init__(pid=pid, suid=suid, duid=duid,
+                         genTime=genTime, txTime=txTime, pktType=pktType)
+
+        self.initTxTime = initTxTime
+        self.txAttempts = txAttempts
+        self.isFlying = isFlying
+
+    def toPacket(self):
+        return Packet(
+            pid=self.pid, suid=self.suid, duid=self.duid, genTime=self.genTime, txTime=self.txTime, pktType=self.pktType
+        )
+
+
 if __name__ == "__main__":
     pkt1 = Packet(pid=1, suid=101, duid=111, genTime=500,
                   txTime=1000, pktType=PacketType.MSG)

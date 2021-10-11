@@ -1,15 +1,14 @@
 import sys
 import time
-import random
 import torch
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-import logging
 
-from Memory import ExperienceMemory
-from DecisionBrain import DecisionBrain
+from .Memory import ExperienceMemory
+from .DecisionBrain import DecisionBrain
+
 
 class DQNNet(nn.Module):
     """Our decision making network that maps states to its Q value"""
@@ -37,8 +36,8 @@ class DQNNet(nn.Module):
         self.load_state_dict(torch.load(modelName))
         self.eval()
 
+
 class DQN_Brain(DecisionBrain):
-    
 
     def __init__(self,
                  stateDim: int,                 # dimension of the system state
@@ -48,7 +47,7 @@ class DQN_Brain(DecisionBrain):
                  learningRate: float = 1e-6,    # initial learning rate
                  learningPeriod: int = 1,       # how often to learn
                  lrDecay: float = 0.95,         # the multiplier to decay the learning rate
-                 #lrDecayInterval: int = 100,   # the period to decay the learning rate
+                 # lrDecayInterval: int = 100,   # the period to decay the learning rate
                  updateFrequency: int = 100,    # period to copying evalNet weights to tgtNet
                  epsilon: float = 0.95,         # greedy policy parameter
                  epsilon_decay: float = 0.99,   # the decay of greedy policy parameter, epsilon
@@ -110,7 +109,8 @@ class DQN_Brain(DecisionBrain):
         # storing [curState, action, reward, nextState], so nStates*2 + 2
         # self.memory = np.zeros((self.memoryCapacity, nStates*2+2))
         self.memoryCapacity = int(memoryCapacity)
-        self.memory = ExperienceMemory(nStates=self.nStates, capacity=self.memoryCapacity)
+        self.memory = ExperienceMemory(
+            nStates=self.nStates, capacity=self.memoryCapacity)
 
         # reward discount
         self.eta = eta
@@ -140,8 +140,6 @@ class DQN_Brain(DecisionBrain):
         if self.learningCounter % self.learningPeriod == self.learningPeriod-1:
             self.learn()
 
-
-
     def learn(self):
         # check whether to update tgtNet
         if self.memory.nExp <= 0:
@@ -155,7 +153,8 @@ class DQN_Brain(DecisionBrain):
         self.learningCounter += 1
 
         # randomly sample $batch experiences
-        states, actions, rewards, nextStates = self.memory.getRandomExperiences(quantity=self.batchSize)
+        states, actions, rewards, nextStates = self.memory.getRandomExperiences(
+            quantity=self.batchSize)
 
         # use the history state, history action, reward, and the ground truth new state
         # to train a regression network that predicts the reward correct.
