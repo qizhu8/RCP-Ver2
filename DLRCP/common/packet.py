@@ -31,9 +31,9 @@ class Packet(object):
             type=self.pktType.name)
         return s
 
-    def toPktInfo(self, initTxTime=0, txAttempts=0, isFlying=True):
+    def toPktInfo(self, initTxTime=0, txAttempts=0, isFlying=True, RLState=[]):
         return PacketInfo(
-            pid=self.pid, suid=self.suid, duid=self.duid, genTime=self.genTime, txTime=self.txTime, initTxTime=initTxTime, txAttempts=txAttempts, isFlying=isFlying, pktType=self.pktType
+            pid=self.pid, suid=self.suid, duid=self.duid, genTime=self.genTime, txTime=self.txTime, initTxTime=initTxTime, txAttempts=txAttempts, isFlying=isFlying, RLState=RLState, pktType=self.pktType
         )
 
     def __lt__(self, other) -> bool:
@@ -45,13 +45,14 @@ class PacketInfo(Packet):
     A data structure storing more details about a packet, except its payload.
     """
 
-    def __init__(self, pid=0, suid=0, duid=0, genTime=0, txTime=0, initTxTime=0, txAttempts=0, isFlying=True, pktType=PacketType.MSG):
+    def __init__(self, pid=0, suid=0, duid=0, genTime=0, txTime=0, initTxTime=0, txAttempts=0, isFlying=True, RLState=[], pktType=PacketType.MSG):
         super().__init__(pid=pid, suid=suid, duid=duid,
                          genTime=genTime, txTime=txTime, pktType=pktType)
 
         self.initTxTime = initTxTime
         self.txAttempts = txAttempts
         self.isFlying = isFlying
+        self.RLState = RLState
 
     def toPacket(self):
         return Packet(

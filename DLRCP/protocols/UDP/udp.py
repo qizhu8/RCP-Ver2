@@ -22,6 +22,7 @@ class UDP(BaseTransportLayerProtocol):
         while self.txBuffer:
             pkt = self.txBuffer.popleft()
             pkt.txTime = self.time # label the txTime
+            pkt.initTxTime = self.time
 
             pktToSendList.append(pkt)
         

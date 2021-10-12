@@ -1,25 +1,34 @@
+from copy import copy
+import logging
 import numpy as np
 from typing import List
 
-from DLRCP.common.packet import Packet
-from DLRCP.protocols.utils import Window
+from DLRCP.common.packet import Packet, PacketType
+from DLRCP.protocols.utils import AutoRegressEst, MovingAvgEst, RTTEst, Window
 from DLRCP.protocols.transportProtocol import BaseTransportLayerProtocol
 from .RL_Brain import DQN_Brain
 from .RL_Brain import Q_Brain
 
+
 class RCP(BaseTransportLayerProtocol):
     requiredKeys = {"RLEngine"}
     optionalKeys = {
-        "maxTxAttempts":-1, "timeout":-1, "maxPktTxDDL":-1,
+        "maxTxAttempts": -1, "timeout": -1, "maxPktTxDDL": -1,
         "batchSize": 32,            #
         "learningRate": 1e-2,       #
-        "memoryCapacity": 1e5,      # 
+        "memoryCapacity": 1e5,      #
         "updateFrequency": 100,     # period to replace target network with evaluation
         "gamma": 0.9,               # reward discount
         "epsilon": 0.7,             # greedy policy parameter
         "epsilon_decay": 0.7,
-        "convergeLossThresh": 0.01, # below which we consider the network as converged
+        "convergeLossThresh": 0.01,  # below which we consider the network as converged
         "learnRetransmissionOnly": False,
+        # utility
+        "alpha": 2,  # shape of utility function
+        "beta1": 0.9, "beta2": 0.1,   # beta1: emphasis on delivery, beta2: emphasis on delay
+        # time-discount delivery
+        "timeDiscount": 0.9,  # reward will be raised to timeDiscound^delay
+        "timeDivider": 100,
     }
 
     def __init__(self, suid: int, duid: int, params: dict = ..., loglevel=BaseTransportLayerProtocol.LOGLEVEL) -> None:
@@ -27,105 +36,112 @@ class RCP(BaseTransportLayerProtocol):
 
         self.ACKMode = "SACK"
 
-        self.window = Window(uid=suid, maxCwnd=-1, maxPktTxDDL=self.maxPktTxDDL, maxTxAttempts=self.maxTxAttempts, ACKMode=self.ACKMode, loglevel=loglevel)
+        self.window = Window(uid=suid, maxCwnd=-1, maxPktTxDDL=self.maxPktTxDDL,
+                             maxTxAttempts=self.maxTxAttempts, ACKMode=self.ACKMode, loglevel=loglevel)
 
         self._initRLEngine(self.RLEngine)
 
         self.learnCounter = 0
-        self.learnPeriod = 8 # number of new data before calling learn
-        self.pktLossTrackingNum = 100
-        self.pktLostNum = 0
+        self.learnPeriod = 8  # number of new data before calling learn
 
-        """
-        A cyclic queue keeping track of the most recent $pktLossTrackingNum of packet's delivery info, which is used to estimate the channel packet loss probability.
-        """
-        self.pktLossInfoQueue = np.zeros(self.pktLossTrackingNum) # keep track of the most recent 100 packets
-        self.pktLossInfoPtr = 0 
+        # performance estimator
 
-    
-    def _initRLEngine(self, RLEngine:str):
+        self.pktIgnoredCounter = []
+
+    def _initRLEngine(self, RLEngine: str):
         def _initQLearningEngine():
-            self.RL_Brain = Q_Brain(nActions=2)
-        
+            self.RL_Brain = Q_Brain(
+                nActions=2,
+                epsilon=self.epsilon,       # greedy policy parameter
+                eta=self.gamma,             # reward discount
+                epsilon_decay=self.epsilon_decay,
+                # method to choose action. e.g. "argmax" or "ThompsonSampling"
+                decisionMethod="argmax",
+                decisionMethodArgs={},  # support parameters, e.g. mapfunc=np.exp
+                loglevel=logging.INFO,
+            )
+
         def _initDQNEngine():
             self.RL_Brain = DQN_Brain(
-                nActions=2, stateDim=5, 
-                batchSize=self.batchSize,   # 
-                memoryCapacity=self.memoryCapacity, # maximum number of experiences to store
-                learningRate=self.learningRate,     # 
-                updateFrequency=self.updateFrequency,# period to replace target network with evaluation network 
-                epsilon=self.epsilon,       # greedy policy parameter 
-                epsilon_decay=self.epsilon_decay, # 
+                nActions=2, stateDim=5,
+                batchSize=self.batchSize,   #
+                memoryCapacity=self.memoryCapacity,  # maximum number of experiences to store
+                learningRate=self.learningRate,     #
+                # period to replace target network with evaluation network
+                updateFrequency=self.updateFrequency,
+                epsilon=self.epsilon,       # greedy policy parameter
+                epsilon_decay=self.epsilon_decay,
                 eta=self.gamma,             # reward discount
-                convergeLossThresh=self.convergeLossThresh, # below which we consider the network as converged
+                # below which we consider the network as converged
+                convergeLossThresh=self.convergeLossThresh,
                 verbose=False
             )
-        
+
         _initRLEngineDict = {
             "Q_LEARNING": _initQLearningEngine,
             "DQN": _initDQNEngine
         }
-        
+
         if RLEngine.upper() in _initRLEngineDict:
             _initRLEngineDict[RLEngine.upper()]()
         else:
-            raise Exception("RL Engine not recognized. Please choose from", _initRLEngineDict.keys())
+            raise Exception(
+                "RL Engine not recognized. Please choose from", _initRLEngineDict.keys())
         self.RLEngineMode = RLEngine
-
 
     def _handleACK(self, ACKPktList: List[Packet]):
         """handle ACK Packets"""
         ACKPidList = []
         for pkt in ACKPktList:
             # only process designated packets
-            if pkt.duid == self.suid and pkt.packetType == Packet.ACK:
+            if pkt.duid == self.suid and pkt.pktType == PacketType.ACK:
+                
+                # update pktLoss, RTT and delay
+                rtt = self.time-pkt.txTime
+                delay = self.time - pkt.genTime
+
+                self.RTTEst.Update(rtt, self.perfDict)
+                self._delayUpdate(delay)
+                self._pktLossUpdate(False)
                 self.perfDict["receivedACK"] += 1
 
                 if self.window.isPktInWindow(pkt.pid):
                     ACKPidList.append(pkt.pid)
 
-                    rtt = self.time-self.window.getPktTxTime(pkt.pid)
-                    self.RTTEst.Update(rtt, self.perfDict)
+        self._handleACK_SACK(SACKPidList=ACKPidList)
 
-        self._handleACK_SACK(SACKPidList=ACKPidList) 
-
-
-    def _handleACK_SACK(self, SACKPidList):
+    def _handleACK_SACK(self, SACKPidList: List[int]):
         for pid in SACKPidList:
-            
             # one packet is delivered
-            delay = self.time-self.buffer[pid].genTime
-            self._delayUpdate(delay=delay)
-            self._pktLossUpdate(isLost=False)
+            delay = self.time-self.window.getPktGenTime(pid)
             self._deliveryRateUpdate(isDelivered=True)
             self.perfDict["deliveredPkts"] += 1
+            pktTxAttempts = self.window.getPktTxAttempts(pid)
 
-
-            if self.buffer[pid].txAttempts > 1 or not self.learnRetransmissionOnly:
-                reward = self.calcUtility(1, delay, self.alpha, self.beta1, self.beta2)
-
+            if not self.learnRetransmissionOnly:
+                reward = self.calcUtility(1, delay)
                 # store the ACKed packet info
                 self.RL_Brain.digestExperience(
-                    prevState=self.buffer[pid].RLState,
+                    prevState=self.window.getPktRLState(pid),
                     action=1,
                     reward=reward,
                     curState=[
-                        self.buffer[pid].txAttempts,
+                        pktTxAttempts,
                         delay,
-                        self.SRTT,
+                        self.RTTEst.getRTT(),
                         self.perfDict["pktLossHat"],
                         self.perfDict["avgDelay"]
                     ]
                 )
-                # self.learn() # this function is integrated into the RL_Brain.digestExperience
 
-            self.buffer.pop(pid, None)
+            self.window.PopPkt(pid)
 
-
-    def ticking(self, ACKPktList=[]):
+    def ticking(self, ACKPktList: List[Packet] = []) -> List[Packet]:
         self.timeElapse()
 
-        self._RL_lossUpdate(self.RL_Brain.loss)
+        self.perfDict["maxWin"] = self.window.perfDict["maxWinCap"]
+
+        self._RLLossUpdate(self.RL_Brain.loss)
         self.perfDict["epsilon"] = self.RL_Brain.epsilon
         if self.RL_Brain.isConverge and self.time < self.perfDict["convergeAt"]:
             self.perfDict["convergeAt"] = self.time
@@ -142,19 +158,78 @@ class RCP(BaseTransportLayerProtocol):
         self.perfDict["distinctPktsSent"] += len(newPktList)
 
         # print the progress if verbose=True
-        if self.verbose:
-            self._printProgress(
-                retransPkts=pktsToRetransmit,
-                newPktList=newPktList
-                )
-        
+        self.logger.debug("[+] Client {suid}->{duid} @ {time} retx {nReTx} + newTx {newTx}".format(
+            suid=self.suid,
+            duid=self.duid,
+            time=self.time,
+            nReTx=len(pktsToRetransmit),
+            newTx=len(newPktList)
+        ))
+
+        self.perfDict["maxWin"] = max(
+            self.perfDict["maxWin"], self.window.bufferSize())
         self.pktIgnoredCounter.append(self.perfDict["ignorePkts"])
 
         return pktsToRetransmit + newPktList
 
+    def _getRetransPkts(self) -> List[Packet]:
+        # wipe out packets that exceed maxTxAttempts and/or maxPktTxDDL
+        # self._cleanWindow()
+        removedPktNum = self.window.cleanBuffer()
+        self.perfDict["ignorePkts"] += removedPktNum
+
+        # pkts to retransmit
+        timeoutPktSet = self.window.getTimeoutPkts(
+            curTime=self.time, RTO=self.RTTEst.getRTO(), perfEstimator=self._pktLossUpdate)
+
+        # generate pkts and update buffer information
+        retransPktList = []
+        for pkt in timeoutPktSet:
+            txAttempts = self.window.getPktTxAttempts(pkt.pid)
+            delay = self.time - pkt.genTime
+            # use RL to make a decision
+            decesionState = [
+                txAttempts,
+                delay,
+                self.RTTEst.getRTT(),
+                self.perfDict["pktLossHat"],
+                self.perfDict["avgDelay"]
+            ]
+
+            action = self.RL_Brain.chooseAction(state=decesionState)
+
+            self._retransUpdate(action)
+
+            if action == 0:
+                # ignored
+                self.perfDict["ignorePkts"] += 1
+                self._ignorePktAndUpdateMemory(pkt.pid, decesionState=decesionState, popKey=True)
+            else:
+                self.window.setPktRLState(pkt.pid, decesionState)
+                retransPktList += self.window.getPkts([pkt.pid])
+
+        return retransPktList
+
+    def _getNewPktsToSend(self):
+        """transmit all packets in txBuffer"""
+        newPktList = []
+        for _ in range(len(self.txBuffer)):
+            newpkt = self.txBuffer.popleft()
+
+            newpkt.txTime = self.time
+            newpkt.initTxTime = self.time
+
+            self._addNewPktAndUpdateMemory(newpkt)
+
+            newPktList.append(newpkt)
+
+        #
+
+        return newPktList
 
     """RL related functions"""
     # def calcReward(self, isDelivered, retentionTime):
+
     def getSysUtil(self, delay=None):
         # get the current system utility
 
@@ -162,74 +237,62 @@ class RCP(BaseTransportLayerProtocol):
             delay = self.perfDict["avgDelay"]
 
         return self.calcUtility(
-                delvyRate=self.perfDict["deliveryRate"],
-                avgDelay=delay, 
-                )
+            delvyRate=self.perfDict["deliveryRate"],
+            avgDelay=delay,
+        )
 
-    def _pktLossUpdate(self, isLost):
-        # channel state estimate
-        isLost = int(isLost)
-        self.pktLostNum -= self.pktLossInfoQueue[self.pktLossInfoPtr]
-        self.pktLostNum += isLost
-        self.pktLossInfoQueue[self.pktLossInfoPtr] = isLost
-        
-        self.pktLossInfoPtr = (self.pktLossInfoPtr+1) % self.pktLossTrackingNum
-
-        self.perfDict["pktLossHat"] = self.pktLostNum / self.pktLossTrackingNum
-
-    def _RL_lossUpdate(self, loss):
-        # keep track of RL network
-        self.perfDict["RL_loss"] = (7/8.0) * self.perfDict["RL_loss"] + (1/8.0) * loss
-
-    def _RL_retransUpdate(self, isRetrans):
-        self.perfDict["retranProb"] = 0.99 * self.perfDict["retranProb"] + 0.01 * int(isRetrans)
-
-    def _delayUpdate(self, delay, update=True):
-        """auto-regression to estimate averaged delay. only for performance check."""
-        alpha = 0.01
-        if update:
-            self.perfDict["avgDelay"] = (1-alpha) * self.perfDict["avgDelay"] + alpha * delay
-            return self.perfDict["avgDelay"]
-        else:
-            return (1-alpha) * self.perfDict["avgDelay"] + alpha * delay
-
-    def _deliveryRateUpdate(self, isDelivered):
-        alpha = 0.001
-        self.perfDict["deliveryRate"] = (1-alpha) * self.perfDict["deliveryRate"] + alpha * int(isDelivered)
-
-    def _pktLossUpdate(self, isLost):
-        # channel state estimate
-        isLost = int(isLost)
-        self.pktLostNum -= self.pktLossInfoQueue[self.pktLossInfoPtr]
-        self.pktLostNum += isLost
-        self.pktLossInfoQueue[self.pktLossInfoPtr] = isLost
-        
-        self.pktLossInfoPtr = (self.pktLossInfoPtr+1) % self.pktLossTrackingNum
-
-        self.perfDict["pktLossHat"] = self.pktLostNum / self.pktLossTrackingNum
-
-    def learn(self):
+    def _ignorePktAndUpdateMemory(self, pid, decesionState, popKey=True):
         """
-        Learn from the stored experiences.
-        If converge, learn per every $self.learnPeriod,
-        otherwise, learn per function call.
-
-        Will be deprecated.
+        inputs:
+            pid: int, the pid of the packet that is ignored
+            decesionState: list(float), the state before taking the action (being igored)
         """
-        if not self.RL_Brain.isConverge:
-            self.RL_Brain.learn()
-        else:
-            self.learnCounter += 1
-            if self.learnCounter >= self.learnPeriod:
-                self.learnCounter = 0
-                self.RL_Brain.learn()
+        # if we ignore a packet, even though we harm the delivery rate, but we contribute to delay
+        self.perfDict["ignorePkts"] += 1
 
-if __name__ == "__main__":
-    suid = 0
-    duid=1
-    params = {"maxTxAttempts":-1, "timeout":30, "maxPktTxDDL":-1,
-    "alpha":2,
-    "beta1":0.8, "beta2":0.2, # beta1: emphasis on delivery, beta2: emphasis on delay
-    "gamma":0.9,
-    "learnRetransmissionOnly": True}, # whether only learn the data related to retransmission
-    RCP(suid=suid, duid=duid, params=params)
+        # ignore a packet contributes to no delay penalty
+        self._deliveryRateUpdate(isDelivered=False)  # update delivery rate
+
+        # if pid in self.buffer:
+        if self.window.isPktInWindow(pid):
+            txAttemps = self.window.getPktTxAttempts(pid)
+            delay = self.time - self.window.getPktGenTime(pid)
+            finalState = [
+                    txAttemps,
+                    delay,
+                    self.RTTEst.getRTT(),
+                    self.perfDict["pktLossHat"],
+                    self.perfDict["avgDelay"]
+                ]
+
+            # ignore a packet results in zero changes of system utility, so getSysUtil
+            reward = self.getSysUtil()
+
+            self.RL_Brain.digestExperience(
+                prevState=decesionState,
+                action=0,
+                reward=reward,
+                curState=finalState
+            )
+
+        if popKey:
+            self.window.PopPkt(pid)
+
+        return
+
+    def _addNewPktAndUpdateMemory(self, pkt: Packet):
+        RLState = [
+            1,  # once used, it must be transmitted once.
+            self.time - pkt.genTime,
+            self.RTTEst.getRTT(),
+            self.perfDict["pktLossHat"],
+            self.perfDict["avgDelay"]
+        ]
+
+        self.window.pushNewPkt(self.time, pkt, RLState)
+
+    def clientSidePerf(self, verbose=False):
+        if verbose:
+            for key in self.perfDict:
+                print("{key}:{val}".format(key=key, val=self.perfDict[key]))
+        return self.perfDict

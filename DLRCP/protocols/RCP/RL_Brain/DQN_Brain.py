@@ -134,8 +134,8 @@ class DQN_Brain(DecisionBrain):
             dim=1, keepdim=False).data.numpy()[0]
         return action
 
-    def digestExperience(self, s, a, r, s_):
-        self.memory.storeOneExperience(s, a, r, s_)
+    def digestExperience(self, prevState, action, reward, curState):
+        self.memory.storeOneExperience(prevState, action, reward, curState)
         self.learningCounter = (self.learningCounter + 1) % self.learningPeriod
         if self.learningCounter % self.learningPeriod == self.learningPeriod-1:
             self.learn()
@@ -165,13 +165,15 @@ class DQN_Brain(DecisionBrain):
 
         # q value based on evalNet
         # select the maximum reward based on actions
-        curQ = self.evalNet(states).gather(dim=1, index=actions)
+        curQ = self.evalNet(states).gather(dim=1, index=actions).squeeze()
 
         # q value based on the system
         # no gradient needed (detach) <=> no back propagation needed
         nextQ = self.tgtNet(nextStates).detach()
         # apply Bellman's equation
-        tgtQ = rewards + self.eta * nextQ.max(dim=1)[0].view(-1, 1)
+        # tgtQ = rewards + self.eta * nextQ.max(dim=1)[0].view(-1, 1)
+        tgtQ = rewards + self.eta * nextQ.max(dim=1)[0]
+
         loss = self.lossFunc(curQ, tgtQ)
 
         self.loss = loss.cpu().detach().numpy()

@@ -54,6 +54,8 @@ class Window_ARQ(BaseTransportLayerProtocol):
 
         self.timeElapse()
 
+        self.perfDict["maxWin"] = self.window.perfDict["maxWinCap"]
+
         self.logger.info("host-{uid}@{time}: before processing, {windowSize} pkts in cwnd".format(
             uid=self.suid, time=self.time, windowSize=self.window.bufferSize()))
 
@@ -62,8 +64,9 @@ class Window_ARQ(BaseTransportLayerProtocol):
 
         # handle timeout packets
         pktsToRetransmit = self.window.getTimeoutPkts(
-            curTime=self.time, RTO=self.RTTEst.getRTO())
+            curTime=self.time, RTO=self.RTTEst.getRTO(), perfEstimator=self._pktLossUpdate)
         self.perfDict["retransAttempts"] += len(pktsToRetransmit)
+
 
         # fetch new packets based on cwnd and packets in buffer
         newPktList = self._getNewPktsToSend()
@@ -77,22 +80,30 @@ class Window_ARQ(BaseTransportLayerProtocol):
             newTx=len(newPktList)
         ))
 
+        self.perfDict["maxWin"] = max(self.perfDict["maxWin"], self.window.bufferSize())
+
         return pktsToRetransmit + newPktList
 
     def _handleACK(self, ACKPktList):
         ACKPidList = []
         for pkt in ACKPktList:
             if pkt.duid == self.suid and pkt.pktType == PacketType.ACK:
-                ACKPidList.append(pkt.pid)
+                
+                self._pktLossUpdate(False)
+                self.perfDict["receivedACK"] += 1
 
-                # update RTT
-                txTime = self.window.getPktTxTime(pkt.pid)
-                if txTime is not None:
+                if self.window.isPktInWindow(pkt.pid):
+                    ACKPidList.append(pkt.pid)
+
+                    # update RTT and delay
+                    txTime = self.window.getPktTxTime(pkt.pid)
+                    genTime = self.window.getPktGenTime(pkt.pid)
                     rtt = self.time-txTime
                     self.RTTEst.Update(rtt, self.perfDict)
-        
-        self.perfDict["receivedACK"] += 1
-        self.window.ACKPkts(ACKPidList, self.perfDict)
+                    delay = self.time - genTime
+                    self._delayUpdate(delay, update=True)
+                    
+        self.perfDict["deliveredPkts"] += self.window.ACKPkts(ACKPidList, self._deliveryRateUpdate)
 
     def _getNewPktsToSend(self):
 
@@ -112,9 +123,6 @@ class Window_ARQ(BaseTransportLayerProtocol):
         return newPktList
 
     def clientSidePerf(self):
-        # generate performance report
-        self.perfDict["maxWin"] = self.window.perfDict["maxWinCap"]
-
         for key in self.perfDict:
             print("{key}:{val}".format(key=key, val=self.perfDict[key]))
         return self.perfDict

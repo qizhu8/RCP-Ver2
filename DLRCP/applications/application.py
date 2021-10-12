@@ -365,7 +365,7 @@ class EchoServer(object):
 
             # gen ACK packet
             pkt.duid, pkt.suid = pkt.suid, pkt.duid
-            pkt.packetType = Packet.ACK
+            pkt.pktType = PacketType.ACK
             pkt.pid = self.ack
             ACKPacketList.append(pkt)
 

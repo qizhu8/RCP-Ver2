@@ -101,43 +101,48 @@ class Window(object):
         return self.availSpace() > 0
 
     def getPidList(self) -> List[int]:
-        return [pkt.pid for pkt in self.buffer]
+        return list(self.buffer.keys())
+        # return [pid for pid in self.buffer]
 
+    def pushNewPkt(self, curTime, pkt, RLState=[]):
+        """Push a packet into the window"""
+        pid = pkt.pid
+        if pid not in self.buffer:
+            if self._hasSpace():
+                # store the packet info in cwnd
+                self.buffer[pid] = self._genNewPktInfoFromPkt(pkt, RLState)
+                self.logger.debug("included pkt {pid}. {bufferSize} pkts in buffer (size={cwnd})".format(
+                    pid=pid, bufferSize=self.bufferSize(), cwnd=self.maxCwnd))
+
+                # performance update
+                self.perfDict["maxWinCap"] = max(
+                    self.perfDict["maxWinCap"], self.bufferSize())
+
+            else:  # no room for new packets
+
+                self.logger.debug("no room for pkt {pid}. {bufferSize} pkts in buffer (size={cwnd})".format(
+                    pid=pid, bufferSize=self.bufferSize(), cwnd=self.maxCwnd))
+        else:
+            # one packet showed up twice.
+            self.logger.debug(
+                "pkt {pid} already in buffer. What happened?".format(pid=pid))
+            
     def pushNewPkts(self, curTime, pktList):
         """
-        push new packets to the congestion window.
+        push new packets to the congestion window. If you have RLState, plase push manually using 
+        pushNewPkt
         """
         if not isinstance(pktList, list):
             pktList = [pktList]
 
         for pkt in pktList:
             pid = pkt.pid
-            if pid not in self.buffer:
-                if self._hasSpace():
-                    # store the packet info in cwnd
-                    self.buffer[pid] = self._genNewPktInfoFromPkt(pkt)
-
-                    self.logger.debug("included pkt {pid}. {bufferSize} pkts in buffer (size={cwnd})".format(
-                        pid=pid, bufferSize=self.bufferSize(), cwnd=self.maxCwnd))
-
-                    # performance update
-                    self.perfDict["maxWinCap"] = max(
-                        self.perfDict["maxWinCap"], self.bufferSize())
-
-                else:  # no room for new packets
-
-                    self.logger.debug("no room for pkt {pid}. {bufferSize} pkts in buffer (size={cwnd})".format(
-                        pid=pid, bufferSize=self.bufferSize(), cwnd=self.maxCwnd))
-            else:
-                # one packet showed up twice.
-                self.logger.debug(
-                    "pkt {pid} already in buffer. What happened?".format(pid=pid))
-
+            self.pushNewPkt(curTime, pkt, [])
         return
 
     """Default ACK Processing Function"""
 
-    def _ACKPkts_SACK(self, SACKPidList: List[int], perfDict: dict = None) -> None:
+    def _ACKPkts_SACK(self, SACKPidList: List[int], perfEstimator=None) -> int:
         """
         Process ACK based on ideal Selective ACK
         """
@@ -146,18 +151,22 @@ class Window(object):
             LCPidList = [SACKPidList]
 
         if not SACKPidList:  # nothing to do
-            return
+            return 0
 
+        deliveredPkts = 0
         for pid in SACKPidList:
             if pid in self.buffer:
                 self.buffer.pop(pid, None)
-                perfDict["deliveredPkts"] += 1
+                deliveredPkts += 1
+
+                if perfEstimator is not None:
+                    perfEstimator(1)
 
                 self.logger.debug("SACK: ACK pkt {pid}".format(pid=pid))
 
-        return
+        return deliveredPkts
 
-    def _ACKPkts_LC(self, LCPidList: List[int], perfDict: dict = None) -> None:
+    def _ACKPkts_LC(self, LCPidList: List[int], perfEstimator=None) -> None:
         """
         Process ACK based on largest Consecutive PID
         """
@@ -165,27 +174,31 @@ class Window(object):
             LCPidList = [LCPidList]
 
         if not LCPidList:  # nothing to do
-            return
+            return 0
 
         # the server will return the largest consecutive PID.
         # any pkt whose pid <= the LCPid are delivered
         LCPid = max(LCPidList)
-
+        deliveredPkts = 0
         for pid in range(self.LastLC+1, LCPid+1):
             if pid in self.buffer:
                 self.buffer.pop(pid, None)
-                perfDict["deliveredPkts"] += 1
+                deliveredPkts += 1
+
+                if perfEstimator is not None:
+                    perfEstimator(1)
 
                 self.logger.debug("LC: ACK pkt {pid}".format(pid=pid))
 
         self.LastLC = LCPid+1
+        return deliveredPkts
 
-    def _ACKPkts_error(self, LCPidList: List[int], perfDict: dict = None):
+    def _ACKPkts_error(self, LCPidList: List[int], perfEstimator=None):
         raise Exception("The ACK function is not implemented.")
 
-    def ACKPkts(self, pidList: List[int], perfDict: dict = None) -> None:
+    def ACKPkts(self, pidList: List[int], perfEstimator=None) -> int:
         """Process ACK Packet id list"""
-        self.ACKPktProcessor(pidList, perfDict)
+        return self.ACKPktProcessor(pidList, perfEstimator)
 
     def PopPkt(self, pid: int) -> Packet:
         """
@@ -205,6 +218,23 @@ class Window(object):
             return self.buffer[pid].genTime
         else:
             return None
+    
+    def getPktTxAttempts(self, pid: int) -> int:
+        if pid in self.buffer:
+            return self.buffer[pid].txAttempts
+        else:
+            return None
+    
+    def getPktRLState(self, pid: int) -> int:
+        if pid in self.buffer:
+            return self.buffer[pid].RLState
+        else:
+            return None
+    def setPktRLState(self, pid, RLState: List):
+        if pid in self.buffer and RLState:
+            self.buffer[pid].RLState = RLState
+        else:
+            raise Exception("Fail to set RLState for pid=", pid, ". RLState=", RLState)
 
     def getPkts(self, pidList: List[int]) -> List[Packet]:
         pktList = []
@@ -213,14 +243,15 @@ class Window(object):
                 pktList.append(self.buffer[pid].toPacket())
         return pktList
 
-    def cleanBuffer(self, curTime: int = -1) -> None:
+    def cleanBuffer(self, curTime: int = -1) -> int:
         """
         wipe out packets that exceed maxTxAttempts or maxPktTxDDL
         """
-
+        removedPktNum = 0 
         if self.maxTxAttempts > -1:
             for pid in self.buffer:
                 if self.buffer[pid].txAttempts >= self.maxTxAttempts:
+                    removedPktNum += 1
                     self.buffer.pop(pid, None)
 
                     self.logger.debug("Pkt {pid} exceeds max Tx attempts ({txAttempts} >= {maxTxAttempts}) Give up".format(
@@ -231,15 +262,18 @@ class Window(object):
             timeDDL = curTime - self.maxPktTxDDL
             for pid in self.buffer:
                 if self.buffer[pid].genTime < timeDDL:
+                    removedPktNum += 1
                     self.buffer.pop(pid, None)
 
                     self.logger.debug("Pkt {pid} exceeds max queuing delay ({delay} >= {maxPktTxDDL}) Give up".format(
                         pid=pid, delay=curTime-self.buffer[pid].initTxTime, maxPktTxDDL=self.maxPktTxDDL
                     ))
+        return removedPktNum
 
-    def getTimeoutPkts(self, curTime: int, RTO: int = -1) -> list:
+    def getTimeoutPkts(self, curTime: int, RTO: int = -1, perfEstimator=None) -> list:
         """
         Collect packets that are regarded as timeout to be retransmitted.
+        Update the packet info once a packet is decided to be retransmitted.
 
         inputs:
             curTime: int, current time
@@ -262,19 +296,28 @@ class Window(object):
                     pid=pid, retention=curTime-self.buffer[pid].txTime, RTO=RTO
                 ))
 
+                pktList.append(self.buffer[pid].toPacket())
+
                 # update packet info
                 self.updatePktInfo_retrans(pid, curTime)
 
-                pktList.append(self.buffer[pid].toPacket())
-
+                # update performance estimator if any
+                if perfEstimator:
+                    perfEstimator(True)
         return pktList
 
     def updatePktInfo_retrans(self, pid: int, curTime: int) -> None:
+        """Decide to retransmit the packet. So update the packet information."""
         self.buffer[pid].txTime = curTime
         self.buffer[pid].txAttempts += 1
 
-    def _genNewPktInfoFromPkt(self, pkt: Packet) -> None:
-        return pkt.toPktInfo(initTxTime=pkt.genTime, txAttempts=1, isFlying=True)
+    def _genNewPktInfoFromPkt(self, pkt: Packet, RLState=[]) -> None:
+        return pkt.toPktInfo(
+            initTxTime=pkt.genTime, 
+            txAttempts=1, # in buffer means it will be transmitted 
+            isFlying=True,
+            RLState=RLState
+            )
 
     def __str__(self):
         rst = ""
@@ -284,3 +327,97 @@ class Window(object):
             rst += self.buffer[pid].__str__()
 
         return rst
+
+
+class MovingAvgEst(object):
+    """
+    This class implements a memory-based estimator.
+
+    The idea is to use a ring buffer to store the most recent records. Estimation is achieved by taking the average of the stored history
+    """
+    def __init__(self, size:int=200) -> None:
+        self.size = size
+        self.ring = [0]*self.size
+        self.ptr = 0
+        self.positiveNum = 0
+    
+    def update(self, newVal:float)->float:
+        # remove the last record
+        self.positiveNum -= self.ring[self.ptr]
+        self.positiveNum += newVal
+        # record the current state
+        self.ring[self.ptr] = newVal
+        # move pointer
+        self.ptr = (self.ptr+1) % self.size
+
+        return self.positiveNum / self.size
+    
+    def getPktLossRate(self):
+        return self.positiveNum / self.size
+
+
+class AutoRegressEst(object):
+    """
+    An estimator implementing auto-regression.
+
+    estimator = alpha * newVal + (1-alpha) * estimator
+    """
+    def __init__(self, alpha:float, initVal:float=0) -> None:
+        assert alpha < 1 and alpha > 0, "alpha should be in range (0, 1)"
+        self.alpha = alpha
+        self.estVal = initVal
+    
+    def update(self, newVal:float, update=True) -> float:
+        newVal = self.alpha * newVal + (1-self.alpha) * self.estVal
+        if update:
+            self.estVal = newVal
+        return newVal
+    
+    def getEstVal(self) -> float:
+        return self.estVal
+
+
+class RTTEst(object):
+    """
+    RTT Estimator follows RFC 6298
+    """
+
+    def __init__(self):
+        self.SRTT = 1    # mean of RTT
+        self.RTTVAR = 1  # variance of RTT
+        self.RTO = 0
+
+    def Update(self, rtt, perfDict=None) -> None:
+        """
+        Same as RFC 6298, using auto-regression. But the true rtt estimation, or RTO 
+        contains two more variables, RTTVAR (rtt variance) and SRTT (smoothed rtt).
+        R' is the rtt for a packet.
+        RTTVAR <- (1 - beta) * RTTVAR + beta * |SRTT - R'|
+        SRTT <- (1 - alpha) * SRTT + alpha * R'
+
+        The values recommended by RFC are alpha=1/8 and beta=1/4.
+
+
+        RTO <- SRTT + max (G, K*RTTVAR) where K =4 is a constant, 
+        G is a clock granularity in seconds, the number of ticks per second.
+        We temporarily simulate our network as a 1 tick per second, so G=1 here
+
+        http://sgros.blogspot.com/2012/02/calculating-tcp-rto.html
+        """
+        self.RTTVAR = self.RTTVAR * 0.75 + abs(self.RTTVAR-rtt) * 0.25
+        self.SRTT = self.SRTT * 0.875 + rtt * (0.125)
+        self.RTO = self.SRTT + max(1, 4*self.RTTVAR)
+
+        if perfDict:
+            perfDict["rttHat"] = self.SRTT
+            perfDict["rto"] = self.RTO
+
+    def getRTT(self) -> float:
+        return self.SRTT
+
+    def getRTO(self) -> float:
+        return self.RTO
+
+    def multiplyRTO(self, multiplier: float) -> None:
+        self.RTO *= multiplier
+        return

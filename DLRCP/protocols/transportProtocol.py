@@ -4,54 +4,9 @@ import logging
 from typing import List
 from collections import deque
 
-from .utils import Window
+from .utils import Window, MovingAvgEst, AutoRegressEst, RTTEst
 from DLRCP.common import Packet
 
-
-class RTTEst(object):
-    """
-    RTT Estimator follows RFC 6298
-    """
-
-    def __init__(self):
-        self.SRTT = 1    # mean of RTT
-        self.RTTVAR = 1  # variance of RTT
-        self.RTO = 0
-
-    def Update(self, rtt, perfDict=None) -> None:
-        """
-        Same as RFC 6298, using auto-regression. But the true rtt estimation, or RTO 
-        contains two more variables, RTTVAR (rtt variance) and SRTT (smoothed rtt).
-        R' is the rtt for a packet.
-        RTTVAR <- (1 - beta) * RTTVAR + beta * |SRTT - R'|
-        SRTT <- (1 - alpha) * SRTT + alpha * R'
-
-        The values recommended by RFC are alpha=1/8 and beta=1/4.
-
-
-        RTO <- SRTT + max (G, K*RTTVAR) where K =4 is a constant, 
-        G is a clock granularity in seconds, the number of ticks per second.
-        We temporarily simulate our network as a 1 tick per second, so G=1 here
-
-        http://sgros.blogspot.com/2012/02/calculating-tcp-rto.html
-        """
-        self.RTTVAR = self.RTTVAR * 0.75 + abs(self.RTTVAR-rtt) * 0.25
-        self.SRTT = self.SRTT * 0.875 + rtt * (0.125)
-        self.RTO = self.SRTT + max(1, 4*self.RTTVAR)
-
-        if perfDict:
-            perfDict["rttHat"] = self.SRTT
-            perfDict["rto"] = self.RTO
-
-    def getRTT(self) -> float:
-        return self.SRTT
-
-    def getRTO(self) -> float:
-        return self.RTO
-
-    def multiplyRTO(self, multiplier: float) -> None:
-        self.RTO *= multiplier
-        return
 
 
 class BaseTransportLayerProtocol(object):
@@ -68,6 +23,27 @@ class BaseTransportLayerProtocol(object):
                     "timeDiscount": 0.9,  # reward will be raised to timeDiscound^delay
                     "timeDivider": 100,
                     }
+    defaultPerfDict = {
+            "distinctPktsRecv": 0,  # of packets received from the application layer
+            "distinctPktsSent": 0,  # pkts transmitted, not necessarily delivered or dropped
+            "deliveredPkts": 0,  # pkts that are confirmed delivered
+            "receivedACK": 0,  # of ACK pkts received (include duplications)
+            "retransAttempts": 0,  # of retranmission attempts
+            "retransProb": 0,
+            "ignorePkts": 0,
+            # estimation of the network packet loss (autoregression)
+            "pktLossHat": 0,
+            "rttHat": 0,  # estimation of the RTT (autoregression)
+            # estimation of the Retransmission Timeout (autoregression)
+            "rto": 0,
+            "avgDelay": 0, # average transmission delay (delivery time - pktGenTime)
+            # estimation of the current delivery rate (autoregression)
+            "deliveryRate": 0,
+            "maxWin": 0,  # maximum # of pkts in Tx window so far
+            "loss": sys.maxsize,  # loss of the decision brain (if applicable)
+            # when the RL_brain works relatively good (converge) if applicable
+            "convergeAt": sys.maxsize,
+        }
 
     def parseParamByMode(self, params: dict, requiredKeys: set, optionalKeys: dict) -> None:
         # required keys
@@ -106,37 +82,38 @@ class BaseTransportLayerProtocol(object):
         self.parseParamByMode(params=params, requiredKeys=self.__class__.requiredKeys,
                               optionalKeys=self.__class__.optionalKeys)
 
-        self.RTTEst = RTTEst()  # rtt, rto estimator
+        self.RTTEst = RTTEst()                  # rtt, rto estimator
+        self.pktLossEst = MovingAvgEst(size=200)  # estimate pkt loss rate
+        self.delvyRateEst = AutoRegressEst(alpha=0.01)
+        self.delayEst = AutoRegressEst(alpha=0.01)
+        self.retransProbEst = AutoRegressEst(alpha=0.01)
+        self.RLLossEst = AutoRegressEst(alpha=0.01) # reserved for RL_Brain
+
 
         # the buffer that new packets enters
-        self.txBuffer = deque(maxlen=None)  # infinite queue
+        self.txBuffer = deque(maxlen=None)      # infinite queue
 
         # window that store un-ACKed packets.
         # Used by protocols that need a retransmission tracking
         self.window = Window(uid=self.suid)
 
         # performance recording dictionary
-        self.perfDict = {
-            "distinctPktsRecv": 0,  # of packets received from the application layer
-            "distinctPktsSent": 0,  # pkts transmitted, not necessarily delivered or dropped
-            "deliveredPkts": 0,  # pkts that are confirmed delivered
-            "receivedACK": 0,  # of ACK pkts received (include duplications)
-            "retransAttempts": 0,  # of retranmission attempts
-            # estimation of the network packet loss (autoregression)
-            "pktLossHat": 0,
-            "rttHat": 0,  # estimation of the RTT (autoregression)
-            # estimation of the Retransmission Timeout (autoregression)
-            "rto": 0,
-            # estimation of the current delivery rate (autoregression)
-            "deliveryRateHat": 0,
-            "maxWin": 0,  # maximum # of pkts in Tx window so far
-            "loss": sys.maxsize,  # loss of the decision brain (if applicable)
-            # when the RL_brain works relatively good (converge) if applicable
-            "convergeAt": sys.maxsize,
-        }
+        self.perfDict = {}
+        self.initPerfDict()
 
         # local time at the client side
         self.time = -1
+    
+    def reset(self):
+        self.time=-1
+        self.initPerfDict()
+        self.txBuffer.clear()
+        self.window.reset()
+
+    def initPerfDict(self):
+        """initialize perfDict to default values"""
+        for key, val in BaseTransportLayerProtocol.defaultPerfDict.items():
+            self.perfDict[key] = val
 
     def initLogger(self, loglevel: int) -> None:
         """This function is implemented in multiple base classes. """
@@ -171,6 +148,35 @@ class BaseTransportLayerProtocol(object):
     def timeElapse(self) -> None:
         self.time += 1
 
+
+    """Update performance estimator"""
+    def _RLLossUpdate(self, loss):
+        # keep track of RL network's loss
+        self.perfDict["loss"] = self.RLLossEst.update(loss)
+
+    def _retransUpdate(self, isRetrans):
+        """The probability of retransmitting a packet."""
+        self.perfDict["retransProb"] = self.retransProbEst.update(int(isRetrans))
+
+    def _delayUpdate(self, delay:float, update=True):
+        """auto-regression to estimate averaged transmission delay = curTime-pkt.genTime. only for performance check."""
+        newDelay = self.delayEst.update(delay, update=update)
+        if update:
+            self.perfDict["avgDelay"] = newDelay
+        return newDelay
+
+    def _deliveryRateUpdate(self, isDelivered):
+        """
+        The probability of a packet being delivered after multiple retransmission
+        """
+        self.perfDict["deliveryRate"] = self.delvyRateEst.update(int(isDelivered))
+        
+
+    def _pktLossUpdate(self, isLost:bool):
+        """The channel packet loss probability"""
+        self.perfDict["pktLossHat"] = self.pktLossEst.update(int(isLost))
+
+    """Get performance metric"""
     def getPerf(self, verbose: bool = False) -> dict:
         if verbose:
             for key in self.perfDict:
@@ -183,6 +189,7 @@ class BaseTransportLayerProtocol(object):
     def getRTO(self) -> float:
         return self.RTTEst.getRTO()
 
+    """Calculate the protocol performance"""
     def calcUtility(self, delvyRate: float, avgDelay: float) -> float:
         delvyRate_norm = delvyRate
         avgDelay_norm = avgDelay
