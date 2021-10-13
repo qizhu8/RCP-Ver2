@@ -7,7 +7,11 @@ import sys
 class DecisionBrain(object):
     LOGLEVEL = logging.INFO
 
-    def __init__(self, convergeLossThresh:float=1.0, loglevel=LOGLEVEL) -> None:
+    def __init__(self, 
+        convergeLossThresh:float=1.0, 
+        epsilon=0.95,       
+        epsilon_decay=0.99,
+        loglevel=LOGLEVEL) -> None:
         self.initLogger(loglevel)
 
         self.globalEvalOn = False  # True: ignore greedy random policy
@@ -15,6 +19,10 @@ class DecisionBrain(object):
         self.loss = sys.maxsize
         self.convergeLossThresh = convergeLossThresh
         self.isConverge = False  # whether the network meets the convergence condition
+
+        self.epsilon = epsilon
+        self.epsilon_decay = epsilon_decay
+        self.epsilon_default = epsilon
 
     def initLogger(self, loglevel):
         self.logger = logging.getLogger(type(self).__name__)
@@ -49,6 +57,14 @@ class DecisionBrain(object):
             self.logger.debug("Random action {action}.".format(action=action))
         return action
 
+    def resetEpsilon(self):
+        """reset epsilon back to its original value."""
+        self.epsilon = self.epsilon_default
+
+    def decayEpsilon(self):
+        """Increase epsilon by shrinking its gap to 1.0 by self.epsilon_decay"""
+        self.epsilon = 1 - (1-self.epsilon)*self.epsilon_decay
+
     def chooseMaxQAction(self, state) -> int:
         """
         Get the Q values of the given state for all actions, 
@@ -70,4 +86,7 @@ class DecisionBrain(object):
 
         if self.loss > 20*self.convergeLossThresh:
             self.isConverge = False
+        
+        if self.loss > 100 * self.convergeLossThresh:
+            self.resetEpsilon()
         

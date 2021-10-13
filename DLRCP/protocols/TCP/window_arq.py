@@ -121,8 +121,3 @@ class Window_ARQ(BaseTransportLayerProtocol):
         self.window.pushNewPkts(self.time, newPktList)
 
         return newPktList
-
-    def clientSidePerf(self):
-        for key in self.perfDict:
-            print("{key}:{val}".format(key=key, val=self.perfDict[key]))
-        return self.perfDict

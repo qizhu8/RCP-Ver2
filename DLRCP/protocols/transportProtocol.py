@@ -217,3 +217,9 @@ class BaseTransportLayerProtocol(object):
         r = (self.timeDiscount**(avgDelay_norm/self.timeDivider)) * (delvyRate_norm**self.alpha)
 
         return r
+        
+    def clientSidePerf(self, verbose=False):
+        if verbose:
+            for key in self.perfDict:
+                print("{key}:{val}".format(key=key, val=self.perfDict[key]))
+        return self.perfDict

@@ -37,9 +37,3 @@ class UDP(BaseTransportLayerProtocol):
         
         
         return pktToSendList
-    
-    def clientSidePerf(self, verbose=False):
-        if verbose:
-            for key in self.perfDict:
-                print("{key}:{val}".format(key=key, val=self.perfDict[key]))
-        return self.perfDict

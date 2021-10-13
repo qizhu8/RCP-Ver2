@@ -283,10 +283,3 @@ class TCP_NewReno(BaseTransportLayerProtocol):
                 self.window.updatePktInfo_retrans(pid, self.time)
 
         return self.window.getPkts(timeoutPidList)
-
-    def clientSidePerf(self, verbose=False):
-        if verbose:
-            for key in self.perfDict:
-                print("{key}:{val}".format(key=key, val=self.perfDict[key]))
-
-        return self.perfDict

@@ -34,6 +34,8 @@ class RCP(BaseTransportLayerProtocol):
     def __init__(self, suid: int, duid: int, params: dict = ..., loglevel=BaseTransportLayerProtocol.LOGLEVEL) -> None:
         super().__init__(suid, duid, params=params, loglevel=loglevel)
 
+        self.protocolName = self.__class__.__name__ + self.RLEngine
+
         self.ACKMode = "SACK"
 
         self.window = Window(uid=suid, maxCwnd=-1, maxPktTxDDL=self.maxPktTxDDL,
@@ -202,7 +204,6 @@ class RCP(BaseTransportLayerProtocol):
 
             if action == 0:
                 # ignored
-                self.perfDict["ignorePkts"] += 1
                 self._ignorePktAndUpdateMemory(pkt.pid, decesionState=decesionState, popKey=True)
             else:
                 self.window.setPktRLState(pkt.pid, decesionState)
@@ -290,9 +291,3 @@ class RCP(BaseTransportLayerProtocol):
         ]
 
         self.window.pushNewPkt(self.time, pkt, RLState)
-
-    def clientSidePerf(self, verbose=False):
-        if verbose:
-            for key in self.perfDict:
-                print("{key}:{val}".format(key=key, val=self.perfDict[key]))
-        return self.perfDict

@@ -141,20 +141,21 @@ class Q_Brain(DecisionBrain):
     def __init__(self,
                  nActions: int,                 # dimension of the action space
                  epsilon: float = 0.95,         # greedy policy parameter
-                 eta: float = 0.9,              # reward discount
                  epsilon_decay: float = 0.99,   # the decay of greedy policy parameter, epsilon
+                 eta: float = 0.9,              # reward discount
                  # method to choose action. e.g. "argmax" or "ThompsonSampling"
+                 convergeLossThresh=0.01,
                  decisionMethod: str = "argmax",
                  decisionMethodArgs: dict = {},  # support parameters
                  loglevel: int = DecisionBrain.LOGLEVEL,
                  ) -> None:
 
-        super().__init__(loglevel)
+        # super().__init__(loglevel)
+        super().__init__(convergeLossThresh=convergeLossThresh,
+            epsilon=epsilon, epsilon_decay=epsilon_decay,loglevel=loglevel)
 
         self.nActions = nActions
 
-        self.epsilon = epsilon
-        self.epsilon_decay = epsilon_decay
 
         self.decisonMethodObj = self._parseDecisionMethod(decisionMethod, decisionMethodArgs)
 

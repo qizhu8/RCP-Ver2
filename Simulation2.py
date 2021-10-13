@@ -1,6 +1,3 @@
-"""
-Different from the scenario in SimulationEnvironment.py, all protocols to be evaluated are not going to compete with each other. At a time only the one protocol is going to be tested.
-"""
 import os
 import sys
 import logging
@@ -42,7 +39,7 @@ print("results save to \\result\\"+pklFilename)
 if len(sys.argv) > 5:
     simulationPeriod = int(sys.argv[5])  # unit ticks / time slots
 else:
-    simulationPeriod = int(10000)  # unit ticks / time slots
+    simulationPeriod = int(20000)  # unit ticks / time slots
 
 """
 add background traffic
@@ -64,7 +61,27 @@ for clientId in range(1, 4+1):
 """
 Protocols to compare
 """
-client_RL = EchoClient(
+client_RL_Q = EchoClient(
+    clientId=101, serverId=111,
+    protocolName="RCP",
+    transportParam={
+        "maxTxAttempts": -1, "timeout": 30, "maxPktTxDDL": -1,
+        "alpha": alpha,
+        # beta1: emphasis on delivery, beta2: emphasis on delay
+        "beta1": beta1, "beta2": beta2,
+        "timeDiscount": timeDiscount,
+        "timeDivider": timeDivider,
+        "RLEngine": "Q_Learning",
+        # "RLEngine": "DQN",
+        "gamma": 0.9,
+        "epsilon": 0.7,
+        "epsilon_decay": 0.9,
+        "learnRetransmissionOnly": False},  # whether only learn the data related to retransmission
+    trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": 1},
+    verbose=False)
+server_RL_Q = EchoServer(serverId=111, ACKMode="SACK", verbose=False)
+
+client_RL_DQN = EchoClient(
     clientId=101, serverId=111,
     protocolName="RCP",
     transportParam={
@@ -77,15 +94,17 @@ client_RL = EchoClient(
         # "RLEngine": "Q_Learning",
         "RLEngine": "DQN",
         "gamma": 0.9,
+        "epsilon": 0.7,
+        "epsilon_decay": 0.9,
         "learnRetransmissionOnly": False},  # whether only learn the data related to retransmission
     trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": 1},
     verbose=False)
-server_RL = EchoServer(serverId=111, ACKMode="SACK", verbose=False)
+server_RL_DQN = EchoServer(serverId=111, ACKMode="SACK", verbose=False)
 
 client_ARQ_finit = EchoClient(
     clientId=201, serverId=211,
     protocolName="window arq", transportParam={
-        "cwnd": 140, "maxTxAttempts": -1, "timeout": 30, "maxPktTxDDL": -1,
+        "cwnd": 240, "maxTxAttempts": -1, "timeout": 30, "maxPktTxDDL": -1,
         "ACKMode": "SACK",
         "alpha": alpha,
         # beta1: emphasis on delivery, beta2: emphasis on delay
@@ -147,12 +166,14 @@ server_TCP_Reno = EchoServer(serverId=511, ACKMode="LC", verbose=False)
 # test_servers = [server_ARQ_infinit_cwnd]
 # test_clients = [client_TCP_Reno]
 # test_servers = [server_TCP_Reno]
-test_clients = [client_RL]
-test_servers = [server_RL]
+# test_clients = [client_RL_DQN]
+# test_servers = [server_RL_DQN]
+# test_clients = [client_RL_Q]
+# test_servers = [server_RL_Q]
 # test_clients = [client_RL, client_UDP, client_ARQ, client_TCP_Reno]
 # test_servers = [server_RL, server_UDP, server_ARQ, server_TCP_Reno]
-# test_clients = [client_UDP, client_ARQ_finit, client_ARQ_infinit_cwnd, client_RL]
-# test_servers = [server_UDP, server_ARQ_finit, server_ARQ_infinit_cwnd, server_RL]
+test_clients = [client_UDP, client_ARQ_finit, client_ARQ_infinit_cwnd, client_RL_Q, client_RL_DQN]
+test_servers = [server_UDP, server_ARQ_finit, server_ARQ_infinit_cwnd, server_RL_Q, server_RL_DQN]
 
 
 def test_client(client, server):

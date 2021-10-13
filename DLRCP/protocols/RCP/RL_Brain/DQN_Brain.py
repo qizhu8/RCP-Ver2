@@ -57,7 +57,7 @@ class DQN_Brain(DecisionBrain):
                  verbose=None                   # deprecated
                  ) -> None:
 
-        super().__init__(convergeLossThresh=convergeLossThresh, loglevel=loglevel)
+        super().__init__(convergeLossThresh=convergeLossThresh, epsilon=epsilon, epsilon_decay=epsilon_decay, loglevel=loglevel)
 
         # automatically transfer to cuda if available
         self.device = torch.device(
@@ -87,11 +87,6 @@ class DQN_Brain(DecisionBrain):
         self.lossFunc = nn.MSELoss()    # since we are doing "regression", we use MSE
         # self.lossFunc = nn.L1Loss()
 
-        # greedy policy epsilon and its decay
-        self.epsilon_init = epsilon
-        self.epsilon = epsilon
-        self.epsilon_decay = epsilon_decay
-
         # RL counters
         # if self.divergeCounter > 3, turn on Greedy because of bad perf
         self.divergeCounter = sys.maxsize
@@ -105,9 +100,6 @@ class DQN_Brain(DecisionBrain):
         self.updateFrequencyCur = self.updateFrequencyFinal/2
 
         # memory of experiences
-        # self.memoryCounter = 0  # number of experience pieces
-        # storing [curState, action, reward, nextState], so nStates*2 + 2
-        # self.memory = np.zeros((self.memoryCapacity, nStates*2+2))
         self.memoryCapacity = int(memoryCapacity)
         self.memory = ExperienceMemory(
             nStates=self.nStates, capacity=self.memoryCapacity)
@@ -147,9 +139,11 @@ class DQN_Brain(DecisionBrain):
 
         # if self.learningCounter > self.updateFrequencyCur:
         if self.learningCounter > self.updateFrequencyFinal:
+            # transfer the weight of the evalNet to tgtNet
             self.tgtNet.load_state_dict(self.evalNet.state_dict())
+            self.decayEpsilon()
+
             self.learningCounter = 0
-            self.epsilon = 1-(1 - self.epsilon)*self.epsilon_decay
         self.learningCounter += 1
 
         # randomly sample $batch experiences
@@ -180,9 +174,6 @@ class DQN_Brain(DecisionBrain):
         if self.learningCounter == 0:
             # self.lr_scheduler.step() # decay learning rate
             self.logger.info("loss=", self.loss)
-
-        # if loss > 100*self.convergeLossThresh:
-        #     self.epsilon = self.epsilon_init
 
         # back propagation
         self.optimizer.zero_grad()
