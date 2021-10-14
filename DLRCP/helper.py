@@ -1,5 +1,12 @@
+import os
+import csv
+import json
 import argparse
 import logging
+import numpy as np
+import pickle as pkl
+from tabulate import tabulate
+
 
 from DLRCP.applications import EchoClient, EchoServer
 from DLRCP.channel import ConstDelayChannel, RandomDelayChannel
@@ -9,8 +16,15 @@ from DLRCP.common import RangeUniform
 def get_opts():
     parser = argparse.ArgumentParser(description='RCP-Ver 2.0')
 
+    # load configuration file
+    parser.add_argument('--configFile', type=str, default= '',
+                        help='configuration file (.json) to be loaded')
+
+    # description
+    parser.add_argument('--testDesc', type=str, default='test',
+                        help='description of the test')
     # Paths
-    parser.add_argument('--data-dir', type=str, default='../data',
+    parser.add_argument('--data-dir', type=str, default='./Results',
                         help='data folder')
 
     # Channel Type
@@ -93,7 +107,38 @@ def get_opts():
 
     ##
     opts = parser.parse_args()
+
+    # load config file is specified
+    opts = _loadOpts(opts)
+
     return opts
+
+def saveOpts(opts):
+    tgtPath = os.path.join(opts.data_dir, opts.testDesc)
+
+    with open(os.path.join(tgtPath, "test_config.json"), 'w') as handle:
+        json.dump(opts.__dict__, handle, indent=4)
+
+def _loadOpts(opts):
+    if opts.configFile:
+        print("loading configurations from", opts.configFile)
+        with open(opts.configFile, 'r') as f:
+            opts.__dict__ = json.load(f)
+    return opts
+
+def prepareDataStorageFolder(opts):
+    tgtPath = os.path.join(opts.data_dir, opts.testDesc)
+    os.makedirs(tgtPath, exist_ok=True)
+
+
+def cleanPrevDataFiles(opts):
+    print("cleaning all stored files")
+    tgtPath = os.path.join(opts.data_dir, opts.testDesc)
+    os.system("rm "+os.path.join(tgtPath, "*.pkl"))
+    os.system("rm "+os.path.join(tgtPath, "*.txt"))
+    os.system("rm "+os.path.join(tgtPath, "*.csv"))
+    os.system("rm "+os.path.join(tgtPath, "*.json"))
+
 
 
 def genChannel(opts):
@@ -253,3 +298,177 @@ def genRCPDQN(opts):
         server_RL_DQN = EchoServer(serverId=611, ACKMode="SACK", verbose=False)
         return [client_RL_DQN], [server_RL_DQN]
     return [], []
+
+
+def fillChannel(opts, channel, bgClients):
+    if opts.fillChannel:
+        print("filling the channel with background packets")
+        channel.initBuffer()
+
+        while not channel.isFull():  # fill the channel with environment packets
+            packetList_enCh = []
+            for client in bgClients:
+                packetList_enCh += client.ticking([])
+            channel.acceptPkts(packetList_enCh)
+
+
+def test_protocol(opts, channel, test_client, test_server, env_clients, env_servers, loadFromHistoryIfPossible=False):
+    ignored_pkt, retrans_pkt, retransProb = 0, 0, 0
+
+    serverPerfFilename = test_client.getProtocolName()+"_perf.pkl"
+    serverPerfFilename = os.path.join(
+        opts.data_dir, opts.testDesc, serverPerfFilename)
+
+    if loadFromHistoryIfPossible and test_client.getProtocolName().lower() not in {"rcpdqn", "rcpq_learning"}:
+        # check whether can load the previous performance file directly
+        if os.path.exists(serverPerfFilename):
+            print("found file ", serverPerfFilename)
+            clientSidePerf, distincPktsSent, clientPid = test_server.calcPerfBasedOnDataFile(
+                serverPerfFilename,
+                utilityCalcHandler=test_client.transportObj.instance.calcUtility,
+            )
+
+            # hacking the final state
+            test_client.pid = clientPid
+            test_client.transportObj.instance.distincPktsSent = distincPktsSent
+            test_client.transportObj.instance.perfDict = clientSidePerf.copy()
+            return
+
+    channel.initBuffer()
+
+    fillChannel(opts, channel, env_clients)
+
+    channel.time = 0
+
+    clientList = env_clients + [test_client]
+    serverList = env_servers + [test_server]
+
+    ACKPacketList = []
+    packetList_enCh = []
+    packetList_deCh = []
+
+    # clear each client server
+    for test_client, test_server in zip(clientList, serverList):
+        test_client.reset()
+        test_server.reset()
+
+    packetList_enCh = []
+    for time in range(1, opts.testPeriod+1):
+        ACKPacketList = []
+        # step 1: each server processes remaining pkts
+        for serverId in range(len(serverList)):
+            ACKPacketList += serverList[serverId].ticking(packetList_deCh)
+
+        # step 2: clients generate packets
+        packetList_enCh = []
+        # for client in clientSet:
+        for clientId in np.random.permutation(len(clientList)):
+            packetList_enCh += clientList[clientId].ticking(ACKPacketList)
+
+        # step 3: feed packets to channel
+        # ACKPacketList += channel.putPackets(packetList_enCh) # allow channel feedback
+        channel.acceptPkts(packetList_enCh)
+        channel.timeElapse()  # channel.time ++
+
+        # step 3: get packets from channel
+        packetList_deCh = channel.getPkts()
+        #print("get pkts", len(packetList_deCh))
+
+        if time % 30 == 0:  # record performance for the past 30 ticks
+            test_server.recordPerfInThisTick(
+                test_client.getPktGen(),
+                utilityCalcHandler=test_client.getCalcUtilityHandler()
+            )
+
+        if time % (opts.testPeriod//10) == 0:
+            print("time ", time, " =================")
+            print("RTT", test_client.getRTT())
+            print("RTO", test_client.getRTO())
+            # client.clientSidePerf(verbose=False)
+            test_server.printPerf(
+                test_client.getPktGen(),
+                test_client.getProtocolName())
+
+            if test_client.getProtocolName().lower() in {"rcpdqn", "rcpq_learning"}:
+                # we store extra more stuff for rcp
+                clientPerfDict = test_client.clientSidePerf()
+                ignored_pkt = clientPerfDict["ignorePkts"] - ignored_pkt
+                retrans_pkt = clientPerfDict["retransAttempts"] - retrans_pkt
+                retransProb = retrans_pkt / (retrans_pkt + ignored_pkt)
+                # debug
+                print("retransProb", retransProb)
+                # client.transportObj.instance.perfDict["retranProb"] = retransProb
+
+    test_server.storePerf(serverPerfFilename,
+                          clientPid=test_client.pid,
+                          distincPktsSent=test_client.getPktGen(),
+                          clientSidePerf=test_client.clientSidePerf())
+
+
+def printTestProtocolPerf(opts, test_clients, test_servers, storePerfBrief=True):
+    header = ["ptcl", "pkts gen", "pkts sent", "pkts dlvy", "dlvy perc", "avg dly",
+              "sys util", "l25p dlvy", "l25p dlvy perc", 'l25p dly', "l25p util"]
+    table = []
+
+    deliveredPktsPerSlot = dict()
+    deliveredPktsPerSlot["protocols"] = []
+
+    for client, server in zip(test_clients, test_servers):  # ignore the first two
+        deliveredPktsPerSlot["protocols"].append(client.getProtocolName())
+        deliveredPktsPerSlot[client.getProtocolName()] = dict()
+
+        server.printPerf(client.getPktGen(), client.getProtocolName())
+        client.transportObj.instance.clientSidePerf(verbose=True)
+
+        # store data
+        deliveredPktsPerSlot[client.getProtocolName()]["serverPerf"] = [
+            server.pktsPerTick, server.delayPerPkt, server.perfRecords]
+        deliveredPktsPerSlot[client.getProtocolName(
+        )]["clientPerf"] = client.transportObj.instance.clientSidePerf()
+
+        # for display
+        deliveredPkts, delvyRate, avgDelay = server.serverSidePerf(
+            client.getPktGen())
+        last25percTime = int(opts.testPeriod*0.25)
+        last25percPkts = sum(server.pktsPerTick[-last25percTime:])
+        last25percDelveyRate = last25percPkts / \
+            (client.pktsPerTick*last25percTime)
+        if(last25percPkts == 0):
+            print(client.getProtocolName(), "have zero packts delivered ")
+            last25percDelay = -1
+        else:
+            last25percDelay = sum(
+                server.delayPerPkt[-last25percPkts:]) / last25percPkts
+        last25percUtil = client.transportObj.instance.calcUtility(
+            delvyRate=last25percDelveyRate, avgDelay=last25percDelay)
+
+        table.append([client.getProtocolName(),
+                      client.pid,
+                      client.getPktGen(),
+                      deliveredPkts,
+                      delvyRate,
+                      avgDelay,
+                      client.transportObj.instance.calcUtility(
+            delvyRate=delvyRate, avgDelay=avgDelay),
+            last25percPkts,
+            last25percDelveyRate,
+            last25percDelay,
+            last25percUtil
+        ])
+
+    deliveredPktsPerSlot["general"] = table
+    deliveredPktsPerSlot["header"] = header
+    print(tabulate(table, headers=header, floatfmt=".3f"))
+
+    if storePerfBrief:
+        tgtPath = os.path.join(opts.data_dir, opts.testDesc)
+        """
+        save briefing of performance
+        """
+        with open(os.path.join(tgtPath, 'perfBrief.txt'), 'w') as handle:
+            handle.writelines(tabulate(table, headers=header, floatfmt=".3f"))
+        with open(os.path.join(tgtPath, 'perfBrief.csv'), 'w') as handle:
+            csvWriter = csv.writer(handle, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            csvWriter.writerow(header)
+            csvWriter.writerows(table)
+    return table, header

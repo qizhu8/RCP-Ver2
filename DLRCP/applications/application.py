@@ -91,6 +91,9 @@ class EchoClient(object):
         self.parseTrafficSettings(
             trafficMode=trafficMode, trafficParam=trafficParam)
 
+        self.startTime_default = self.startTime
+        self.lastTime_default = self.lastTime
+
         # the implemented protocol instance
         self.transportObj = TransportLayerHelper(
             suid=self.uid, duid=self.duid, protocolName=protocolName, params=transportParam, txBufferLen=txBufferLen, verbose=verbose)
@@ -107,6 +110,16 @@ class EchoClient(object):
                 self.trafficParam["period"]
         if self.trafficMode == "poisson":
             self.pktsPerTick = self.trafficParam["lambda"]
+
+    def reset(self):
+        self.transportObj.instance.reset()
+        self.startTime = self.startTime_default
+        self.lastTime = self.lastTime_default
+        # init time
+        self.time = -1
+
+        # packet id
+        self.pid = 0
 
     def ticking(self, ACKPktList=[]):
         self.time += 1
@@ -177,8 +190,11 @@ class EchoClient(object):
     def getRTO(self):
         return self.transportObj.instance.getRTO()
     
-    def clientSidePerf(self):
-        return self.transportObj.instance.clientSidePerf()
+    def getCalcUtilityHandler(self):
+        return self.transportObj.instance.calcUtility
+    
+    def clientSidePerf(self, verbose=False):
+        return self.transportObj.instance.clientSidePerf(verbose=verbose)
 
 
 class EchoServer(object):
@@ -209,6 +225,11 @@ class EchoServer(object):
 
         # packet ack counter, the latest sequential ack
         self.ACKMode = self.parseACKMode(ACKMode)
+        self._inititalize()
+        
+    
+
+    def _inititalize(self):
         self.ack = -1  # last ACKed packet id or maximum packet id
 
         # time
@@ -237,6 +258,10 @@ class EchoServer(object):
         #
         self.loadFromDatafile = False
 
+
+    def reset(self):
+        self._inititalize()
+
     def storePerf(self, filename, clientPid, distincPktsSent, clientSidePerf):
         # store the current states to dictionary, then to file
         data = {}
@@ -250,7 +275,7 @@ class EchoServer(object):
         with open(filename, 'wb') as f:
             pkl.dump(data, f, protocol=pkl.HIGHEST_PROTOCOL)
 
-    def calcPerfBasedOnDataFile(self, previous_dataFile, utilityCalcHandler, utilityCalcHandlerParams):
+    def calcPerfBasedOnDataFile(self, previous_dataFile, utilityCalcHandler):
 
         with open(previous_dataFile, 'rb') as f:
             data = pkl.load(f)
@@ -265,10 +290,7 @@ class EchoServer(object):
             avgDelay = self.perfRecords[idx][3]
 
             utilPerPkt = utilityCalcHandler(
-                deliveryRate=deliveryRate, avgDelay=avgDelay,
-                alpha=utilityCalcHandlerParams["alpha"],
-                beta1=utilityCalcHandlerParams["beta1"],
-                beta2=utilityCalcHandlerParams["beta2"]
+                delvyRate=deliveryRate, avgDelay=avgDelay,
             )
 
             self.perfRecords[idx][-1] = utilPerPkt

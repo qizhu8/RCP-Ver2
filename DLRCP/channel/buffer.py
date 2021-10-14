@@ -27,6 +27,7 @@ class BaseBuffer(object):
         self.loglevel = loglevel
         self.nPktsInBuf = 0
 
+
     def initLogger(self, loglevel):
         self.logger = logging.getLogger(type(self).__name__)
         self.logger.setLevel(loglevel)
@@ -113,6 +114,7 @@ class FIFOBuffer(BaseBuffer):
     def clearBuffer(self):
         self.FIFOQueue.clear()
         self.timeQueue.clear()
+        self.nPktsInBuf = 0
 
     def enqueue(self, packet: Packet, time: int = 0) -> bool:
         """
@@ -196,6 +198,7 @@ class PriorityBuffer(BaseBuffer):
     
     def clearBuffer(self):
         self.PriorityQueue.clear()
+        self.nPktsInBuf = 0
 
     def enqueue(self, packet: Packet, time: int) -> bool:
         """
