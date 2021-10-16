@@ -12,7 +12,7 @@ class TransportLayerHelper(object):
 
     """
 
-    def __init__(self, suid, duid, protocolName, params, txBufferLen=None, verbose=False):
+    def __init__(self, suid, duid, protocolName, params, verbose=False):
         supportProtocols = {
             "udp": UDP,
             "window arq": Window_ARQ,

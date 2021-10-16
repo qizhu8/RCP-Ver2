@@ -79,7 +79,7 @@ class EchoClient(object):
 
         trafficParamHandleDict[trafficMode](trafficParam)
 
-    def __init__(self, clientId, serverId, protocolName, transportParam, trafficMode, trafficParam, txBufferLen=None, verbose=False):
+    def __init__(self, clientId, serverId, protocolName, transportParam, trafficMode, trafficParam, verbose=False):
         self.uid = clientId
         self.duid = serverId
         self.verbose = verbose
@@ -96,7 +96,7 @@ class EchoClient(object):
 
         # the implemented protocol instance
         self.transportObj = TransportLayerHelper(
-            suid=self.uid, duid=self.duid, protocolName=protocolName, params=transportParam, txBufferLen=txBufferLen, verbose=verbose)
+            suid=self.uid, duid=self.duid, protocolName=protocolName, params=transportParam, verbose=verbose)
 
         # init time
         self.time = -1

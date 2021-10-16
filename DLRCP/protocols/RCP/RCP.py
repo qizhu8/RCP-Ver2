@@ -24,11 +24,11 @@ class RCP(BaseTransportLayerProtocol):
         "convergeLossThresh": 0.01,  # below which we consider the network as converged
         "learnRetransmissionOnly": False,
         # utility
-        "alpha": 2,  # shape of utility function
-        "beta1": 0.9, "beta2": 0.1,   # beta1: emphasis on delivery, beta2: emphasis on delay
+        # "alpha": 2,  # shape of utility function
+        # "beta1": 0.9, "beta2": 0.1,   # beta1: emphasis on delivery, beta2: emphasis on delay
         # time-discount delivery
-        "timeDiscount": 0.9,  # reward will be raised to timeDiscound^delay
-        "timeDivider": 100,
+        # "timeDiscount": 0.9,  # reward will be raised to timeDiscound^delay
+        # "timeDivider": 100,
     }
 
     def __init__(self, suid: int, duid: int, params: dict = ..., loglevel=BaseTransportLayerProtocol.LOGLEVEL) -> None:

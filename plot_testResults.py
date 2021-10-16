@@ -50,13 +50,14 @@ def plot_one_attribute(testPerfDicts, attributeName, configAttributeName, attrib
 
     timeDiscountList = [testPerfDicts[x][0] for x in orderedKey]
     for protocolId, protocol in enumerate(protocols):
-        plt.plot(timeDiscountList, protocolPerf[protocol], label=protocol)
+        plt.plot(timeDiscountList, protocolPerf[protocol], '-o', label=protocol)
     
     plt.xlabel(configAttributeName)
     plt.ylabel(attributeName)
     plt.legend()
     plt.savefig(imgPath)
     # plt.show()
+    print("Generating", imgPath)
     return protocols, protocolPerf
 
 
@@ -94,22 +95,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='RCP-Ver 2.0 - plot for time discount')
 
     parser.add_argument('--resultFolder', type=str, default= '', required=True,
-                        help='configuration file (.json) to be loaded')
+                        help='parent folder that stores multiple test results')
+    parser.add_argument('--subFolderPrefix', type=str, default= '', required=True,
+                        help='prefix of the subfolder that stores each test result')
+    parser.add_argument('--configAttributeName', type=str, default= 'beta',
+                        help='the attribute name that changes among the experimetns')
 
     opts = parser.parse_args()
-    resultFolders = []
-    resultFolders.append(opts.resultFolder)
-    
-    # resultFolders = [
-    #     "./Results/ChangeTimeDiscount_alpha_0_5/",
-    #     "./Results/ChangeTimeDiscount_alpha_1_0/",
-    #     "./Results/ChangeTimeDiscount_alpha_2_0/",
-    #     "./Results/ChangeTimeDiscount_alpha_3_0/",
-    #     "./Results/ChangeTimeDiscount_alpha_4_0/",
-    #     ]
-    subFolderPrefix = "timeDiscount"
-    configAttributeName = "timeDiscount"
+
     attributeNameList=attributeNameDict.keys()
-    for resultFolder in resultFolders:
-        for attributeName in attributeNameList:
-            main(resultFolder, subFolderPrefix, configAttributeName, attributeName)
+    for attributeName in attributeNameList:
+        main(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName, attributeName)

@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import numpy as np
 from typing import List
 from collections import deque
 
@@ -14,15 +15,19 @@ class BaseTransportLayerProtocol(object):
     Base class for all transport layer protocols
     """
     LOGLEVEL = logging.INFO
-    requiredKeys = {}
+    requiredKeys = {"utilityMethod"}
     optionalKeys = {"maxTxAttempts": -1, "timeout": -1, "maxPktTxDDL": -1,
-                    # sum of power utility
-                    "alpha": 2,  # shape of utility function
-                    "beta1": 0.9, "beta2": 0.1,   # beta1: emphasis on delivery, beta2: emphasis on delay
-                    # time-discount delivery
-                    "timeDiscount": 0.9,  # reward will be raised to timeDiscound^delay
-                    "timeDivider": 100,
                     }
+
+    utilityKeys = {
+        # parameter for utility
+        "alpha": 2,  # shape of utility function
+        "timeDivider": 100,
+        "beta": 0.9,  # beta: emphasis on delay
+    }
+    
+
+
     defaultPerfDict = {
             "distinctPktsRecv": 0,  # of packets received from the application layer
             "distinctPktsSent": 0,  # pkts transmitted, not necessarily delivered or dropped
@@ -45,7 +50,7 @@ class BaseTransportLayerProtocol(object):
             "convergeAt": sys.maxsize,
         }
 
-    def parseParamByMode(self, params: dict, requiredKeys: set, optionalKeys: dict) -> None:
+    def parseParamByMode(self, params: dict, requiredKeys: set, optionalKeys: dict, utilityKeys: dict) -> None:
         # required keys
         for key in requiredKeys:
             assert key in params, key + \
@@ -58,6 +63,14 @@ class BaseTransportLayerProtocol(object):
                 setattr(self, key, params[key])
             else:
                 setattr(self, key, optionalKeys[key])
+        
+        # utilityKeys keys
+        for key in utilityKeys:
+            if key in params:
+                setattr(self, key, params[key])
+            else:
+                setattr(self, key, utilityKeys[key])
+
 
     def __init__(self, suid: int, duid: int, params: dict = {}, loglevel=LOGLEVEL) -> None:
         """
@@ -79,8 +92,15 @@ class BaseTransportLayerProtocol(object):
         self.duid = duid
 
         # assign values to
-        self.parseParamByMode(params=params, requiredKeys=self.__class__.requiredKeys,
-                              optionalKeys=self.__class__.optionalKeys)
+        self.parseParamByMode(
+            params=params, 
+            requiredKeys=self.__class__.requiredKeys.union(BaseTransportLayerProtocol.requiredKeys), # 
+            optionalKeys={**self.__class__.optionalKeys, **BaseTransportLayerProtocol.optionalKeys}, 
+            utilityKeys={**self.__class__.utilityKeys, **BaseTransportLayerProtocol.utilityKeys},
+            )
+
+        # assign utility calculator handler
+        self.initUtilityCalculator()
 
         self.RTTEst = RTTEst()                  # rtt, rto estimator
         self.pktLossEst = MovingAvgEst(size=200)  # estimate pkt loss rate
@@ -109,6 +129,15 @@ class BaseTransportLayerProtocol(object):
         self.initPerfDict()
         self.txBuffer.clear()
         self.window.reset()
+
+    def initUtilityCalculator(self):
+        calcUtilityHandlerDict={
+            "sumpower":self.calcUtility_sumPower, 
+            "timediscount":self.calcUtility_timeDiscount,
+            }
+
+        if self.utilityMethod.lower() in calcUtilityHandlerDict:
+            self.calcUtilityHandler = calcUtilityHandlerDict[self.utilityMethod.lower()]
 
     def initPerfDict(self):
         """initialize perfDict to default values"""
@@ -190,11 +219,12 @@ class BaseTransportLayerProtocol(object):
         return self.RTTEst.getRTO()
 
     """Calculate the protocol performance"""
-    def calcUtility(self, delvyRate: float, avgDelay: float) -> float:
-        delvyRate_norm = delvyRate
-        avgDelay_norm = avgDelay
 
-        # utility used by ICCCN
+    def calcUtility(self, delvyRate: float, avgDelay: float) -> float:
+        return self.calcUtilityHandler(delvyRate, avgDelay)
+
+    def calcUtility_sumPower(self, delvyRate: float, avgDelay: float) -> float:
+        # utility used by ICCCN 2021. A little bit tricky. We changed it to be a general form.
         """
         UDP_dlvy, UDP_dly = 0.58306*0.9, 261.415*0.9
         ARQ_dlvy, ARQ_dly = 0.86000*1.1, 1204.294*1.1
@@ -204,17 +234,17 @@ class BaseTransportLayerProtocol(object):
         q = (avgDelay - UDP_dly) / (ARQ_dly-UDP_dly)
         r = -beta1*((1-dlvy)**alpha) - beta2*(q**alpha)
         #"""
+        sigmoid = lambda x : 1/(1 + np.exp(-x))
+        
 
         # sum of power
-        # r = -self.beta1*((1-delvyRate_norm)**self.alpha) - self.beta2*(avgDelay_norm**self.alpha)
+        r = -self.beta * sigmoid((1-delvyRate)**self.alpha) - (1-self.beta) * sigmoid((avgDelay/self.timeDivider)**self.alpha)
+        return r
 
+    def calcUtility_timeDiscount(self, delvyRate: float, avgDelay: float) -> float:
+        
         # exponential
-        # print("timeDiscount", self.timeDiscount)
-        # print("avgDelay_norm", avgDelay_norm)
-        # print("delvyRate_norm", delvyRate_norm)
-        # print("alpha", self.alpha)
-        # print("timeDivider", self.timeDivider)
-        r = (self.timeDiscount**(avgDelay_norm/self.timeDivider)) * (delvyRate_norm**self.alpha)
+        r = (self.beta**(avgDelay/self.timeDivider)) * (delvyRate**self.alpha)
 
         return r
         

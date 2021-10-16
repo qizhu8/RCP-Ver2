@@ -14,11 +14,11 @@ class TCP_NewReno(BaseTransportLayerProtocol):
                     "maxTxAttempts": -1, # no maximum retransmission
                     "maxPktTxDDL": -1,  
                     # utility
-                    "alpha": 2,  # shape of utility function
-                    "beta1": 0.9, "beta2": 0.1,   # beta1: emphasis on delivery, beta2: emphasis on delay
+                    # "alpha": 2,  # shape of utility function
+                    # "beta1": 0.9, "beta2": 0.1,   # beta1: emphasis on delivery, beta2: emphasis on delay
                     # time-discount delivery
-                    "timeDiscount": 0.9,  # reward will be raised to timeDiscound^delay
-                    "timeDivider": 100,
+                    # "timeDiscount": 0.9,  # reward will be raised to timeDiscound^delay
+                    # "timeDivider": 100,
                     } 
 
     # TCP state

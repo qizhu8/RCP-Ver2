@@ -131,8 +131,8 @@ class DQN_Brain(DecisionBrain):
     def digestExperience(self, prevState, action, reward, curState):
         self.memory.storeOneExperience(prevState, action, reward, curState)
         self.learningCounter = (self.learningCounter + 1) % self.learningPeriod
-        if self.learningCounter % self.learningPeriod == self.learningPeriod-1:
-            self.learn()
+        # if self.learningCounter % self.learningPeriod == self.learningPeriod-1:
+        self.learn()
 
     def learn(self):
         # check whether to update tgtNet

@@ -52,12 +52,17 @@ def get_opts():
                         help='# pkt to send by the background UDP client per tick')
 
     # utility setting
-    parser.add_argument('--alpha', type=float, default=2.0,
-                        help='exponent index of delivery rate')
-    parser.add_argument('--timeDiscount', type=float, default=0.9,
-                        help='reward discount over time (used when calculating utility)')
+    parser.add_argument('--utilityMethod', type=str, default='timeDiscount',
+                        help="utility method. 'timeDiscount', 'sumPower'")
     parser.add_argument('--timeDivider', type=float, default=100,
-                        help='1 time unit = timeDivider ticks')
+                        help='ticks per time unit')
+    parser.add_argument('--alpha', type=float, default=2.0,
+                        help='exponent index of delivery rate (and delay)')
+    # timeDiscountUtility -- utility = beta^(delay/timeDivision) * deliveryRate^alpha
+    # sum of power utility -- utility = beta * (delay/timeDivision)^alpha + (1-beta) * deliveryRate^alpha
+    parser.add_argument('--beta', type=float, default=0.5,
+                        help='reward discount over time (used when calculating utility)')
+
 
     # Test protocol setting
     parser.add_argument('--pktRate', type=int, default=1,
@@ -178,7 +183,13 @@ def genBgClientsAndServers(opts):
 
         client = EchoClient(clientId=clientId, serverId=1000+clientId,
                             protocolName="UDP",
-                            transportParam={},
+                            transportParam={
+                                #utility
+                                "utilityMethod": opts.utilityMethod,
+                                "alpha": opts.alpha,
+                                "timeDivider": opts.timeDivider,
+                                "beta": opts.beta,
+                            },
                             trafficMode="periodic",
                             trafficParam={
                                 "period": 1, "pktsPerPeriod": opts.bgClientPktRate},
@@ -196,9 +207,11 @@ def genTestUDP(opts):
         client_UDP = EchoClient(
             clientId=101, serverId=111,
             protocolName="UDP", transportParam={
+                #utility
+                "utilityMethod": opts.utilityMethod,
                 "alpha": opts.alpha,
-                "timeDiscount": opts.timeDiscount,
                 "timeDivider": opts.timeDivider,
+                "beta": opts.beta,
             },
             trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": opts.pktRate},
             verbose=False)
@@ -214,9 +227,11 @@ def genTestARQFiniteWindow(opts):
             protocolName="window arq", transportParam={
                 "cwnd": opts.ARQWin, "maxTxAttempts": -1, "timeout": 30, "maxPktTxDDL": -1,
                 "ACKMode": "SACK",
+                # utility
+                "utilityMethod": opts.utilityMethod,
                 "alpha": opts.alpha,
-                "timeDiscount": opts.timeDiscount,
                 "timeDivider": opts.timeDivider,
+                "beta": opts.beta,
             },
             trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": opts.pktRate},
             verbose=False)
@@ -233,9 +248,11 @@ def genTestARQinFiniteWindow(opts):
             protocolName="window arq", transportParam={
                 "cwnd": -1, "maxTxAttempts": -1, "timeout": 30, "maxPktTxDDL": -1,
                 "ACKMode": "SACK",
+                # utility
+                "utilityMethod": opts.utilityMethod,
                 "alpha": opts.alpha,
-                "timeDiscount": opts.timeDiscount,
                 "timeDivider": opts.timeDivider,
+                "beta": opts.beta,
             },
             trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": opts.pktRate},
             verbose=False)
@@ -252,9 +269,11 @@ def genTCPNewReno(opts):
             # IW=2 if SMSS>2190, IW=3 if SMSS>3, else IW=4
             protocolName="tcp_newreno", transportParam={
                 "timeout": 30, "IW": 4,
+                #utility
+                "utilityMethod": opts.utilityMethod,
                 "alpha": opts.alpha,
-                "timeDiscount": opts.timeDiscount,
                 "timeDivider": opts.timeDivider,
+                "beta": opts.beta,
             },
             trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": opts.pktRate},
             verbose=False)
@@ -270,14 +289,18 @@ def genRCPQLearning(opts):
             protocolName="RCP",
             transportParam={
                 "maxTxAttempts": -1, "timeout": 30, "maxPktTxDDL": -1,
-                "alpha": opts.alpha,
-                "timeDiscount": opts.timeDiscount,
-                "timeDivider": opts.timeDivider,
+                "utilityMethod": opts.utilityMethod,
                 "RLEngine": "Q_Learning",
                 "gamma": opts.RCPQLearningGamma,
                 "epsilon": opts.RCPQLearningEpsilon,
                 "epsilon_decay": opts.RCPQLearningEpsilonDecay,
-                "learnRetransmissionOnly": False},  # whether only learn the data related to retransmission
+                "learnRetransmissionOnly": False,  # whether only learn the data related to retransmission
+                # utility
+                "utilityMethod": opts.utilityMethod,
+                "alpha": opts.alpha,
+                "timeDivider": opts.timeDivider,
+                "beta": opts.beta,
+            },
             trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": opts.pktRate},
             verbose=False)
         server_RL_Q = EchoServer(serverId=511, ACKMode="SACK", verbose=False)
@@ -292,14 +315,17 @@ def genRCPDQN(opts):
             protocolName="RCP",
             transportParam={
                 "maxTxAttempts": -1, "timeout": 30, "maxPktTxDDL": -1,
-                "alpha": opts.alpha,
-                "timeDiscount": opts.timeDiscount,
-                "timeDivider": opts.timeDivider,
                 "RLEngine": "DQN",
                 "gamma": opts.RCPDQNGamma,
                 "epsilon": opts.RCPDQNEpsilon,
                 "epsilon_decay": opts.RCPDQNEpsilonDecay,
-                "learnRetransmissionOnly": False},  # whether only learn the data related to retransmission
+                "learnRetransmissionOnly": False,  # whether only learn the data related to retransmission
+                # utility
+                "utilityMethod": opts.utilityMethod,
+                "alpha": opts.alpha,
+                "timeDivider": opts.timeDivider,
+                "beta": opts.beta,
+            },
             trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": opts.pktRate},
             verbose=False)
         server_RL_DQN = EchoServer(serverId=611, ACKMode="SACK", verbose=False)
@@ -410,6 +436,7 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
                 # debug
                 print("retransProb", retransProb)
                 print("epsilon", clientPerfDict["epsilon"])
+                print("loss", clientPerfDict["loss"])
                 # client.transportObj.instance.perfDict["retranProb"] = retransProb
 
     test_server.storePerf(serverPerfFilename,
