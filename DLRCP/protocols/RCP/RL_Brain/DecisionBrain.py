@@ -42,7 +42,7 @@ class DecisionBrain(object):
         """save the current prediction model to a file"""
         raise NotImplementedError
 
-    def chooseAction(self, state: np.ndarray, evalOn=False):
+    def chooseAction(self, state: np.ndarray, evalOn=False, baseline_Q0=None):
         """
         choose action based on maximum Q with probability 1-epsilon, and random action with probability epsilon
         """
@@ -50,7 +50,7 @@ class DecisionBrain(object):
         # epsilon greedy
         if evalOn or self.globalEvalOn or np.random.uniform() < self.epsilon:
             # actionRewards if of shape 1 x nAction
-            action = self.chooseMaxQAction(state)
+            action = self.chooseMaxQAction(state, baseline_Q0=baseline_Q0)
             self.logger.debug("Q-base action {action}.".format(action=action))
         else:
             action = random.randint(0, self.nActions-1)

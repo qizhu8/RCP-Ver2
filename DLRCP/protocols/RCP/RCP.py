@@ -57,6 +57,7 @@ class RCP(BaseTransportLayerProtocol):
                 epsilon=self.epsilon,       # greedy policy parameter
                 eta=self.gamma,             # reward discount
                 epsilon_decay=self.epsilon_decay,
+                updateFrequency=1000,
                 # method to choose action. e.g. "argmax" or "ThompsonSampling"
                 decisionMethod="argmax",
                 decisionMethodArgs={},  # support parameters, e.g. mapfunc=np.exp
@@ -198,7 +199,11 @@ class RCP(BaseTransportLayerProtocol):
                 self.perfDict["avgDelay"]
             ]
 
-            action = self.RL_Brain.chooseAction(state=decesionState)
+            if self.RLEngine.upper() in {"DQN"}:
+                # for DQN, we shouldn't interfere its learning strategy. 
+                action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
+            else:
+                action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=self.getSysUtil())
 
             self._retransUpdate(action)
 

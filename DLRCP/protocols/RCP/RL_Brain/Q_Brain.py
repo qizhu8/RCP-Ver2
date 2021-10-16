@@ -145,6 +145,7 @@ class Q_Brain(DecisionBrain):
                  eta: float = 0.9,              # reward discount
                  # method to choose action. e.g. "argmax" or "ThompsonSampling"
                  convergeLossThresh=0.01,
+                 updateFrequency: int = 1000,    # period to copying evalNet weights to tgtNet
                  decisionMethod: str = "argmax",
                  decisionMethodArgs: dict = {},  # support parameters
                  loglevel: int = DecisionBrain.LOGLEVEL,
@@ -160,6 +161,9 @@ class Q_Brain(DecisionBrain):
         self.decisonMethodObj = self._parseDecisionMethod(decisionMethod, decisionMethodArgs)
 
         self.eta = eta
+
+        self.learningCounter = 0
+        self.updateFrequencyFinal = updateFrequency
 
         # nStates here is the number of different states, not the dimension of a state
         self.QTable = QTable(nActions=self.nActions, nStates=2) 
@@ -191,10 +195,12 @@ class Q_Brain(DecisionBrain):
         """Extract only the number of retransmission attempts from a full packet state"""
         return int(state[0])
 
-    def chooseMaxQAction(self, state):
+    def chooseMaxQAction(self, state, baseline_Q0=None):
         # state = [txAttempts, delay, RTT, packetLossHat, averageDelay]
         state = self._parseState(state)
         qVals = self.QTable.getQ(state)
+        if baseline_Q0 is not None:
+            qVals[0] = baseline_Q0
         # method 1 - Pure Q-based method
         action = qVals.argmax()
 
@@ -210,7 +216,14 @@ class Q_Brain(DecisionBrain):
         """
         prevState, curState = self._parseState(
             prevState), self._parseState(curState)
+        
         self.learnReward(prevState, action, reward, curState)
+
+        if self.learningCounter > self.updateFrequencyFinal:
+            # transfer the weight of the evalNet to tgtNet
+            self.decayEpsilon()
+            self.learningCounter = 0
+        self.learningCounter += 1
 
     def learnReward(self, prevState, action, reward, newState):
         """

@@ -1,8 +1,9 @@
 import os
 import csv
 import json
-import argparse
 import logging
+import argparse
+import subprocess
 import numpy as np
 import pickle as pkl
 from tabulate import tabulate
@@ -22,10 +23,12 @@ def get_opts():
 
     # description
     parser.add_argument('--testDesc', type=str, default='test',
-                        help='description of the test')
+                        help='description of the test, also the folder name to store the result')
     # Paths
     parser.add_argument('--data-dir', type=str, default='./Results',
-                        help='data folder')
+                        help='result data folder')
+    parser.add_argument('--nonRCPDatadir', type=str, default='./Results',
+                        help='the folder to store the temp data for Non-RCP protocol test result')
 
     # Channel Type
     parser.add_argument('--channelType', type=str, default='RandomDelayChannel',
@@ -52,7 +55,7 @@ def get_opts():
     parser.add_argument('--alpha', type=float, default=2.0,
                         help='exponent index of delivery rate')
     parser.add_argument('--timeDiscount', type=float, default=0.9,
-                        help='reward discount over time')
+                        help='reward discount over time (used when calculating utility)')
     parser.add_argument('--timeDivider', type=float, default=100,
                         help='1 time unit = timeDivider ticks')
 
@@ -130,14 +133,18 @@ def prepareDataStorageFolder(opts):
     tgtPath = os.path.join(opts.data_dir, opts.testDesc)
     os.makedirs(tgtPath, exist_ok=True)
 
+    tgtPath = os.path.join(opts.nonRCPDatadir)
+    os.makedirs(tgtPath, exist_ok=True)
+
 
 def cleanPrevDataFiles(opts):
-    print("cleaning all stored files")
-    tgtPath = os.path.join(opts.data_dir, opts.testDesc)
-    os.system("rm "+os.path.join(tgtPath, "*.pkl"))
-    os.system("rm "+os.path.join(tgtPath, "*.txt"))
-    os.system("rm "+os.path.join(tgtPath, "*.csv"))
-    os.system("rm "+os.path.join(tgtPath, "*.json"))
+    if opts.clean_run:
+        print("cleaning all stored files")
+        tgtPath = os.path.join(opts.data_dir, opts.testDesc)
+        subprocess.run(["rm", os.path.join(tgtPath, "*.pkl")], shell=True)
+        subprocess.run(["rm", os.path.join(tgtPath, "*.txt")], shell=True)
+        subprocess.run(["rm", os.path.join(tgtPath, "*.csv")], shell=True)
+        subprocess.run(["rm", os.path.join(tgtPath, "*.json")], shell=True)
 
 
 
@@ -316,10 +323,12 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
     ignored_pkt, retrans_pkt, retransProb = 0, 0, 0
 
     serverPerfFilename = test_client.getProtocolName()+"_perf.pkl"
-    serverPerfFilename = os.path.join(
-        opts.data_dir, opts.testDesc, serverPerfFilename)
+    
 
     if loadFromHistoryIfPossible and test_client.getProtocolName().lower() not in {"rcpdqn", "rcpq_learning"}:
+        serverPerfFilename = os.path.join(
+        opts.nonRCPDatadir, serverPerfFilename)
+
         # check whether can load the previous performance file directly
         if os.path.exists(serverPerfFilename):
             print("found file ", serverPerfFilename)
@@ -333,6 +342,9 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
             test_client.transportObj.instance.distincPktsSent = distincPktsSent
             test_client.transportObj.instance.perfDict = clientSidePerf.copy()
             return
+    else:
+        serverPerfFilename = os.path.join(
+        opts.data_dir, opts.testDesc, serverPerfFilename)
 
     channel.initBuffer()
 
@@ -397,6 +409,7 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
                 retransProb = retrans_pkt / (retrans_pkt + ignored_pkt)
                 # debug
                 print("retransProb", retransProb)
+                print("epsilon", clientPerfDict["epsilon"])
                 # client.transportObj.instance.perfDict["retranProb"] = retransProb
 
     test_server.storePerf(serverPerfFilename,

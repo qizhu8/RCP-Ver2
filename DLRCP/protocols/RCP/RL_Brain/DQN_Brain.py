@@ -117,11 +117,13 @@ class DQN_Brain(DecisionBrain):
     def saveModel(self):
         self.evalNet.saveModel()
 
-    def chooseMaxQAction(self, state):
+    def chooseMaxQAction(self, state, baseline_Q0=None):
         """choose the action that counts for the maximum Q value"""
         state = torch.unsqueeze(torch.FloatTensor(
             state), 0).to(self.device)  # to vector
         actionRewards = self.evalNet.forward(state)
+        if baseline_Q0 is not None:
+            actionRewards[0] = baseline_Q0
         action = actionRewards.argmax(
             dim=1, keepdim=False).data.numpy()[0]
         return action
@@ -137,14 +139,11 @@ class DQN_Brain(DecisionBrain):
         if self.memory.nExp <= 0:
             return
 
-        # if self.learningCounter > self.updateFrequencyCur:
-        if self.learningCounter > self.updateFrequencyFinal:
+        self.updateFrequencyCur = (self.updateFrequencyCur+1) % self.updateFrequencyFinal
+        if self.updateFrequencyCur % self.updateFrequencyFinal == self.updateFrequencyFinal-1:
             # transfer the weight of the evalNet to tgtNet
             self.tgtNet.load_state_dict(self.evalNet.state_dict())
             self.decayEpsilon()
-
-            self.learningCounter = 0
-        self.learningCounter += 1
 
         # randomly sample $batch experiences
         states, actions, rewards, nextStates = self.memory.getRandomExperiences(

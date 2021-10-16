@@ -1,7 +1,8 @@
 {
     "configFile": "",
     "testDesc": "test",
-    "data_dir": "./results",
+    "data_dir": "Results/",
+    "nonRCPDatadir": "Results/tempResult",
     "channelType": "RandomDelayChannel",
     "serviceRate": 3,
     "bufferSize": 300,
