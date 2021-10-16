@@ -121,7 +121,7 @@ class DQN_Brain(DecisionBrain):
         """choose the action that counts for the maximum Q value"""
         state = torch.unsqueeze(torch.FloatTensor(
             state), 0).to(self.device)  # to vector
-        actionRewards = self.evalNet.forward(state)
+        actionRewards = self.evalNet.forward(state).cpu()
         if baseline_Q0 is not None:
             actionRewards[0] = baseline_Q0
         action = actionRewards.argmax(
