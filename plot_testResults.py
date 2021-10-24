@@ -20,7 +20,8 @@ attributeNameDict = {
         "packets delivered (last 25%)": "l25p dlvy",
         "delivery percentage (last 25%)": "l25p dlvy perc",
         "average delay (last 25%)": "l25p dly",
-        "system utility (last 25%)": "l25p util"
+        "system utility (last 25%)": "l25p util",
+        "loss": "loss"
     }
 
 def plot_one_attribute(testPerfDicts, attributeName, configAttributeName, attributeNameDict, resultFolder):
@@ -38,10 +39,6 @@ def plot_one_attribute(testPerfDicts, attributeName, configAttributeName, attrib
             else:
                 protocolPerf[protocol].append(columnOfInterest[protocolId])
     
-    # for protocolId, protocol in enumerate(protocols):
-    #     print(protocol, protocolPerf[protocol])
-    # print(orderedKey)
-
     # for plotting
     plt.clf()
     imgDir = os.path.join(resultFolder, "summary")
@@ -81,7 +78,7 @@ def main(resultFolder, subFolderPrefix, configAttributeName, attributeName):
 
         with open(jsonFileName, "r") as fp:
             configDict = json.load(fp)
-        # get the timeDiscount
+        # get the attribute that changes over different experiments from the save json file
         firstDigit = int(configDict[configAttributeName])
         secondDigit = int(configDict[configAttributeName]*10) % 10
         key = str(firstDigit)+str(secondDigit)

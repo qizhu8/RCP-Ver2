@@ -45,7 +45,7 @@ class BaseTransportLayerProtocol(object):
             # estimation of the current delivery rate (autoregression)
             "deliveryRate": 0,
             "maxWin": 0,  # maximum # of pkts in Tx window so far
-            "loss": sys.maxsize,  # loss of the decision brain (if applicable)
+            "loss": 0,  # loss of the decision brain (if applicable)
             # when the RL_brain works relatively good (converge) if applicable
             "convergeAt": sys.maxsize,
         }
@@ -103,7 +103,7 @@ class BaseTransportLayerProtocol(object):
         self.initUtilityCalculator()
 
         self.RTTEst = RTTEst()                  # rtt, rto estimator
-        self.pktLossEst = MovingAvgEst(size=200)  # estimate pkt loss rate
+        self.pktLossEst = MovingAvgEst(size=500)  # estimate pkt loss rate
         self.delvyRateEst = AutoRegressEst(alpha=0.01)
         self.delayEst = AutoRegressEst(alpha=0.01)
         self.retransProbEst = AutoRegressEst(alpha=0.01)
@@ -234,11 +234,11 @@ class BaseTransportLayerProtocol(object):
         q = (avgDelay - UDP_dly) / (ARQ_dly-UDP_dly)
         r = -beta1*((1-dlvy)**alpha) - beta2*(q**alpha)
         #"""
-        sigmoid = lambda x : 1/(1 + np.exp(-x))
+        # sigmoid = lambda x : 1/(1 + np.exp(-x))
         
 
         # sum of power
-        r = -self.beta * sigmoid((1-delvyRate)**self.alpha) - (1-self.beta) * sigmoid((avgDelay/self.timeDivider)**self.alpha)
+        r = -self.beta * ((1-delvyRate)**self.alpha) - (1-self.beta) * ((avgDelay/self.timeDivider)**self.alpha)
         return r
 
     def calcUtility_timeDiscount(self, delvyRate: float, avgDelay: float) -> float:

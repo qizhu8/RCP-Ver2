@@ -3,6 +3,7 @@ import sys
 import logging
 import numpy as npß
 import pickle as pkl
+import multiprocessing
 from tabulate import tabulate
 import matplotlib.pyplot as plt
 
@@ -46,16 +47,16 @@ client_ARQ_infinit, server_ARQ_infinit = helper.genTestARQinFiniteWindow(opts)
 client_NewReno, server_NewReno = helper.genTCPNewReno(opts)
 client_RL_Q, server_RL_Q = helper.genRCPQLearning(opts)
 client_RL_DQN, server_RL_DQN = helper.genRCPDQN(opts)
+client_RL_RTQ, server_RL_RTQ = helper.genRCPRTQ(opts)
 
 test_clients = client_UDP + client_ARQ_finit + \
-    client_ARQ_infinit + client_NewReno + client_RL_Q + client_RL_DQN
+    client_ARQ_infinit + client_NewReno + client_RL_Q + client_RL_DQN + client_RL_RTQ
 test_servers = server_UDP + server_ARQ_finit + \
-    server_ARQ_infinit + server_NewReno + server_RL_Q + server_RL_DQN
+    server_ARQ_infinit + server_NewReno + server_RL_Q + server_RL_DQN + server_RL_RTQ
 
 """
 Run the simulation for each test client and test server pair
 """
-
 for test_client, test_server in zip(test_clients, test_servers):
     helper.test_protocol(
         opts, 

@@ -87,6 +87,6 @@ class DecisionBrain(object):
         if self.loss > 20*self.convergeLossThresh:
             self.isConverge = False
         
-        if self.loss > 100 * self.convergeLossThresh:
-            self.resetEpsilon()
+        # if self.loss > 100 * self.convergeLossThresh:
+            # self.resetEpsilon()
         

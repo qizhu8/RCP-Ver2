@@ -8,6 +8,8 @@ from DLRCP.protocols.utils import AutoRegressEst, MovingAvgEst, RTTEst, Window
 from DLRCP.protocols.transportProtocol import BaseTransportLayerProtocol
 from .RL_Brain import DQN_Brain
 from .RL_Brain import Q_Brain
+from .RL_Brain import RTQ_Brain
+
 
 
 class RCP(BaseTransportLayerProtocol):
@@ -79,10 +81,19 @@ class RCP(BaseTransportLayerProtocol):
                 convergeLossThresh=self.convergeLossThresh,
                 verbose=False
             )
+        
+        def _initRTQEngine():
+            self.RL_Brain = RTQ_Brain(
+                utilityCalcHandler=self.calcUtility,
+                retransMax=self.maxTxAttempts,
+                updateFrequency=8,
+                loglevel=logging.INFO
+            )
 
         _initRLEngineDict = {
             "Q_LEARNING": _initQLearningEngine,
-            "DQN": _initDQNEngine
+            "DQN": _initDQNEngine,
+            "RTQ": _initRTQEngine,
         }
 
         if RLEngine.upper() in _initRLEngineDict:
@@ -183,7 +194,7 @@ class RCP(BaseTransportLayerProtocol):
 
         # pkts to retransmit
         timeoutPktSet = self.window.getTimeoutPkts(
-            curTime=self.time, RTO=self.RTTEst.getRTO(), perfEstimator=self._pktLossUpdate)
+            curTime=self.time, RTO=self.RTTEst.getRTO(), pktLossEst=self._pktLossUpdate)
 
         # generate pkts and update buffer information
         retransPktList = []
@@ -199,11 +210,13 @@ class RCP(BaseTransportLayerProtocol):
                 self.perfDict["avgDelay"]
             ]
 
-            if self.RLEngine.upper() in {"DQN"}:
-                # for DQN, we shouldn't interfere its learning strategy. 
-                action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
-            else:
-                action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=self.getSysUtil())
+            # action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
+            action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=self.getSysUtil())
+            # if self.RLEngine.upper() in {"DQN"}:
+            #     # for DQN, we shouldn't interfere its learning strategy. 
+            #     action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
+            # else:
+            #     action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=self.getSysUtil())
 
             self._retransUpdate(action)
 

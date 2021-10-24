@@ -18,7 +18,7 @@ def get_opts():
     parser = argparse.ArgumentParser(description='RCP-Ver 2.0')
 
     # load configuration file
-    parser.add_argument('--configFile', type=str, default= '',
+    parser.add_argument('--configFile', type=str, default='',
                         help='configuration file (.json) to be loaded')
 
     # description
@@ -27,8 +27,8 @@ def get_opts():
     # Paths
     parser.add_argument('--data-dir', type=str, default='./Results',
                         help='result data folder')
-    parser.add_argument('--nonRCPDatadir', type=str, default='./Results',
-                        help='the folder to store the temp data for Non-RCP protocol test result')
+    parser.add_argument('--nonRCPDatadir', type=str, default='',
+                        help='the folder to store the temp data for Non-RCP protocol test result. Default to be [data-dir]/[testDesc]/')
 
     # Channel Type
     parser.add_argument('--channelType', type=str, default='RandomDelayChannel',
@@ -42,8 +42,8 @@ def get_opts():
     parser.add_argument('--channelDelay', nargs='+', type=int,
                         default=[100, 150],
                         help='a list of delay used by the selected channel. If RandomDelayChannel, a list of the min&max of the random number. If ConstDelayChannel, one integer is needed')
-    parser.add_argument('--fillChannel', default=True, action='store_true',
-                        help="whether to fill the channel with environment packets")
+    parser.add_argument('--fillChannel', dest='fillChannel', default=False,
+                        action='store_true', help="whether to fill the channel with environment packets")
 
     # environment setting
     parser.add_argument('--bgClientNum', type=int, default=4,
@@ -63,7 +63,6 @@ def get_opts():
     parser.add_argument('--beta', type=float, default=0.5,
                         help='reward discount over time (used when calculating utility)')
 
-
     # Test protocol setting
     parser.add_argument('--pktRate', type=int, default=1,
                         help='number of pkts generated per tick for the client to be tested')
@@ -72,25 +71,25 @@ def get_opts():
                         help='simulation period')
 
     # UDP
-    parser.add_argument('--addUDP', default=True, action='store_true',
+    parser.add_argument('--addUDP', default=False, action='store_true',
                         help="whether to add UDP to test")
 
     # ARQ finite window
-    parser.add_argument('--addARQFinite', default=True, action='store_true',
+    parser.add_argument('--addARQFinite', default=False, action='store_true',
                         help="whether to add ARQ with finite window to test")
     parser.add_argument('--ARQWin', type=int, default=200,
                         help='maximum window size of ARQ Finite')
 
     # ARQ infinite window
-    parser.add_argument('--addARQInfinite', default=True, action='store_true',
+    parser.add_argument('--addARQInfinite', default=False, action='store_true',
                         help="whether to add ARQ with infinite window to test")
 
     # TCP NewReno
-    parser.add_argument('--addNewReno', default=True, action='store_true',
+    parser.add_argument('--addNewReno', default=False, action='store_true',
                         help="whether to add TCP New Reno to test")
 
     # RCP-QLearning
-    parser.add_argument('--addRCPQLearning', default=True, action='store_true',
+    parser.add_argument('--addRCPQLearning', default=False, action='store_true',
                         help="whether to add RCP-QLearning to test")
     parser.add_argument('--RCPQLearningGamma', type=float, default=0.9,
                         help='reward decay coefficient')
@@ -100,7 +99,7 @@ def get_opts():
                         help='DQN greedy policy epsilon decay')
 
     # RCP-DQN
-    parser.add_argument('--addRCPDQN', default=True, action='store_true',
+    parser.add_argument('--addRCPDQN', default=False, action='store_true',
                         help="whether to add RCP-QLearning to test")
     parser.add_argument('--RCPDQNGamma', type=float, default=0.9,
                         help='reward decay coefficient')
@@ -108,6 +107,10 @@ def get_opts():
                         help='DQN greedy policy epsilon')
     parser.add_argument('--RCPDQNEpsilonDecay', type=float, default=0.9,
                         help='DQN greedy policy epsilon decay')
+
+    # RCP-RTQ
+    parser.add_argument('--addRCPRTQ', default=False, action='store_true',
+                        help="whether to add RCP-RTQ to test")
 
     # Additional options
     parser.add_argument('--clean-run', dest='clean_run',
@@ -121,11 +124,13 @@ def get_opts():
 
     return opts
 
+
 def saveOpts(opts):
     tgtPath = os.path.join(opts.data_dir, opts.testDesc)
 
     with open(os.path.join(tgtPath, "test_config.json"), 'w') as handle:
         json.dump(opts.__dict__, handle, indent=4)
+
 
 def _loadOpts(opts):
     if opts.configFile:
@@ -134,18 +139,26 @@ def _loadOpts(opts):
             opts.__dict__ = json.load(f)
     return opts
 
+
 def prepareDataStorageFolder(opts):
     tgtPath = os.path.join(opts.data_dir, opts.testDesc)
     os.makedirs(tgtPath, exist_ok=True)
-
-    tgtPath = os.path.join(opts.nonRCPDatadir)
-    os.makedirs(tgtPath, exist_ok=True)
+    
+    if opts.nonRCPDatadir:
+        tgtPath = os.path.join(opts.nonRCPDatadir)
+        os.makedirs(tgtPath, exist_ok=True)
 
 
 def cleanPrevDataFiles(opts):
     if opts.clean_run:
         print("cleaning all stored files")
         tgtPath = os.path.join(opts.data_dir, opts.testDesc)
+        subprocess.run(["rm", os.path.join(tgtPath, "*.pkl")], shell=True)
+        subprocess.run(["rm", os.path.join(tgtPath, "*.txt")], shell=True)
+        subprocess.run(["rm", os.path.join(tgtPath, "*.csv")], shell=True)
+        subprocess.run(["rm", os.path.join(tgtPath, "*.json")], shell=True)
+
+        tgtPath = os.path.join(opts.nonRCPDatadir)
         subprocess.run(["rm", os.path.join(tgtPath, "*.pkl")], shell=True)
         subprocess.run(["rm", os.path.join(tgtPath, "*.txt")], shell=True)
         subprocess.run(["rm", os.path.join(tgtPath, "*.csv")], shell=True)
@@ -184,7 +197,7 @@ def genBgClientsAndServers(opts):
         client = EchoClient(clientId=clientId, serverId=1000+clientId,
                             protocolName="UDP",
                             transportParam={
-                                #utility
+                                # utility
                                 "utilityMethod": opts.utilityMethod,
                                 "alpha": opts.alpha,
                                 "timeDivider": opts.timeDivider,
@@ -207,7 +220,7 @@ def genTestUDP(opts):
         client_UDP = EchoClient(
             clientId=101, serverId=111,
             protocolName="UDP", transportParam={
-                #utility
+                # utility
                 "utilityMethod": opts.utilityMethod,
                 "alpha": opts.alpha,
                 "timeDivider": opts.timeDivider,
@@ -269,7 +282,7 @@ def genTCPNewReno(opts):
             # IW=2 if SMSS>2190, IW=3 if SMSS>3, else IW=4
             protocolName="tcp_newreno", transportParam={
                 "timeout": 30, "IW": 4,
-                #utility
+                # utility
                 "utilityMethod": opts.utilityMethod,
                 "alpha": opts.alpha,
                 "timeDivider": opts.timeDivider,
@@ -294,7 +307,8 @@ def genRCPQLearning(opts):
                 "gamma": opts.RCPQLearningGamma,
                 "epsilon": opts.RCPQLearningEpsilon,
                 "epsilon_decay": opts.RCPQLearningEpsilonDecay,
-                "learnRetransmissionOnly": False,  # whether only learn the data related to retransmission
+                # whether only learn the data related to retransmission
+                "learnRetransmissionOnly": False,
                 # utility
                 "utilityMethod": opts.utilityMethod,
                 "alpha": opts.alpha,
@@ -319,7 +333,8 @@ def genRCPDQN(opts):
                 "gamma": opts.RCPDQNGamma,
                 "epsilon": opts.RCPDQNEpsilon,
                 "epsilon_decay": opts.RCPDQNEpsilonDecay,
-                "learnRetransmissionOnly": False,  # whether only learn the data related to retransmission
+                # whether only learn the data related to retransmission
+                "learnRetransmissionOnly": False,
                 # utility
                 "utilityMethod": opts.utilityMethod,
                 "alpha": opts.alpha,
@@ -332,6 +347,31 @@ def genRCPDQN(opts):
         return [client_RL_DQN], [server_RL_DQN]
     return [], []
 
+def genRCPRTQ(opts):
+    if opts.addRCPRTQ:
+        client_RL_RTQ = EchoClient(
+            clientId=701, serverId=711,
+            protocolName="RCP",
+            transportParam={
+                "maxTxAttempts": 10, "timeout": 30, "maxPktTxDDL": -1,
+                "utilityMethod": opts.utilityMethod,
+                "RLEngine": "RTQ",
+                "gamma": opts.RCPQLearningGamma,
+                "epsilon": opts.RCPQLearningEpsilon,
+                "epsilon_decay": opts.RCPQLearningEpsilonDecay,
+                # whether only learn the data related to retransmission
+                "learnRetransmissionOnly": False,
+                # utility
+                "utilityMethod": opts.utilityMethod,
+                "alpha": opts.alpha,
+                "timeDivider": opts.timeDivider,
+                "beta": opts.beta,
+            },
+            trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": opts.pktRate},
+            verbose=False)
+        server_RL_RTQ = EchoServer(serverId=711, ACKMode="SACK", verbose=False)
+        return [client_RL_RTQ], [server_RL_RTQ]
+    return [], []
 
 def fillChannel(opts, channel, bgClients):
     if opts.fillChannel:
@@ -349,11 +389,14 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
     ignored_pkt, retrans_pkt, retransProb = 0, 0, 0
 
     serverPerfFilename = test_client.getProtocolName()+"_perf.pkl"
-    
 
-    if loadFromHistoryIfPossible and test_client.getProtocolName().lower() not in {"rcpdqn", "rcpq_learning"}:
-        serverPerfFilename = os.path.join(
-        opts.nonRCPDatadir, serverPerfFilename)
+    if loadFromHistoryIfPossible and test_client.getProtocolName().lower() not in {"rcpdqn", "rcpq_learning", "rcprtq"}:
+        if opts.nonRCPDatadir: # stored in the specified temp folder
+            serverPerfFilename = os.path.join(
+                opts.nonRCPDatadir, serverPerfFilename)
+        else: # same as result folder
+            serverPerfFilename = os.path.join(
+            opts.data_dir, opts.testDesc, serverPerfFilename)
 
         # check whether can load the previous performance file directly
         if os.path.exists(serverPerfFilename):
@@ -370,7 +413,7 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
             return
     else:
         serverPerfFilename = os.path.join(
-        opts.data_dir, opts.testDesc, serverPerfFilename)
+            opts.data_dir, opts.testDesc, serverPerfFilename)
 
     channel.initBuffer()
 
@@ -427,12 +470,15 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
                 test_client.getPktGen(),
                 test_client.getProtocolName())
 
-            if test_client.getProtocolName().lower() in {"rcpdqn", "rcpq_learning"}:
+            if test_client.getProtocolName().lower() in {"rcpdqn", "rcpq_learning", 'rcprtq'}:
                 # we store extra more stuff for rcp
                 clientPerfDict = test_client.clientSidePerf()
                 ignored_pkt = clientPerfDict["ignorePkts"] - ignored_pkt
                 retrans_pkt = clientPerfDict["retransAttempts"] - retrans_pkt
-                retransProb = retrans_pkt / (retrans_pkt + ignored_pkt)
+                if retrans_pkt == 0:
+                    retransProb = 0
+                else:
+                    retransProb = retrans_pkt / (retrans_pkt + ignored_pkt)
                 # debug
                 print("retransProb", retransProb)
                 print("epsilon", clientPerfDict["epsilon"])
@@ -447,7 +493,7 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
 
 def printTestProtocolPerf(opts, test_clients, test_servers, storePerfBrief=True):
     header = ["ptcl", "pkts gen", "pkts sent", "pkts dlvy", "dlvy perc", "avg dly",
-              "sys util", "l25p dlvy", "l25p dlvy perc", 'l25p dly', "l25p util"]
+              "sys util", "l25p dlvy", "l25p dlvy perc", 'l25p dly', "l25p util", "loss"]
     table = []
 
     deliveredPktsPerSlot = dict()
@@ -458,13 +504,13 @@ def printTestProtocolPerf(opts, test_clients, test_servers, storePerfBrief=True)
         deliveredPktsPerSlot[client.getProtocolName()] = dict()
 
         server.printPerf(client.getPktGen(), client.getProtocolName())
-        client.transportObj.instance.clientSidePerf(verbose=True)
+        clientPerfDict = client.transportObj.instance.clientSidePerf(verbose=True)
 
         # store data
         deliveredPktsPerSlot[client.getProtocolName()]["serverPerf"] = [
             server.pktsPerTick, server.delayPerPkt, server.perfRecords]
         deliveredPktsPerSlot[client.getProtocolName(
-        )]["clientPerf"] = client.transportObj.instance.clientSidePerf()
+        )]["clientPerf"] = clientPerfDict
 
         # for display
         deliveredPkts, delvyRate, avgDelay = server.serverSidePerf(
@@ -488,12 +534,12 @@ def printTestProtocolPerf(opts, test_clients, test_servers, storePerfBrief=True)
                       deliveredPkts,
                       delvyRate,
                       avgDelay,
-                      client.transportObj.instance.calcUtility(
-            delvyRate=delvyRate, avgDelay=avgDelay),
-            last25percPkts,
-            last25percDelveyRate,
-            last25percDelay,
-            last25percUtil
+                      client.transportObj.instance.calcUtility(delvyRate=delvyRate, avgDelay=avgDelay),
+                      last25percPkts,
+                      last25percDelveyRate,
+                      last25percDelay,
+                      last25percUtil,
+                      clientPerfDict["loss"]
         ])
 
     deliveredPktsPerSlot["general"] = table
@@ -508,7 +554,8 @@ def printTestProtocolPerf(opts, test_clients, test_servers, storePerfBrief=True)
         with open(os.path.join(tgtPath, 'perfBrief.txt'), 'w') as handle:
             handle.writelines(tabulate(table, headers=header, floatfmt=".3f"))
         with open(os.path.join(tgtPath, 'perfBrief.csv'), 'w') as handle:
-            csvWriter = csv.writer(handle, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            csvWriter = csv.writer(handle, delimiter=',',
+                                   quotechar='"', quoting=csv.QUOTE_MINIMAL)
             csvWriter.writerow(header)
             csvWriter.writerows(table)
     return table, header
