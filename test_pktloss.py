@@ -25,7 +25,7 @@ utilityMethodList = ["TimeDiscount"]
 # utilityMethodList = ["SumPower"]
 alphaList = [2]
 # alphaList = [0.5, 1, 2, 3, 4]
-beta = 0.8
+beta = 0.5
 pktLossList = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
 def run_test_beta(args):

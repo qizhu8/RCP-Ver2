@@ -37,6 +37,7 @@ class RTQ_Brain(DecisionBrain):
 
         # smoothed channel RTT and pktloss
         self.chRTTEst = AutoRegressEst(0.1)
+        self.chRTTVarEst = AutoRegressEst(0.1)
         self.chPktLossEst = AutoRegressEst(0.1)
         self.s_star = 0
 
@@ -50,18 +51,19 @@ class RTQ_Brain(DecisionBrain):
     
     def calcDelay(self, gamma, rtt, rxMax):
         rto_div_rtt = 3 # rto = 3 * rtt
-        delay = rtt * (1 - (rto_div_rtt * ((rxMax-1)+1)* (gamma**rxMax) + (gamma - gamma ** rxMax)/(1-gamma)))
+        delay = rtt * (1 + rto_div_rtt*(gamma - gamma**rxMax)/(1-gamma) - (rto_div_rtt*rxMax-2)*(gamma**rxMax))
         return delay
 
     def _parseState(self, state):
         """Extract only txAttempts, pktLossHat, avgDelay"""
-        return int(state[0]), state[2], state[3]
+        return int(state[0]), state[2], state[3], state[5]
 
     def chooseMaxQAction(self, state, baseline_Q0=None):
         # state = [txAttempts, delay, RTT, packetLossHat, averageDelay]
-        txAttempts, RTT, packetLossHat = self._parseState(state)
+        txAttempts, RTT, packetLossHat, RTTVar = self._parseState(state)
         self.chPktLossEst.update(packetLossHat)
         self.chRTTEst.update(RTT)
+        self.chRTTVarEst.update(RTTVar)
 
         if self.learningCounter == 0:
             self.calcBestS()
@@ -96,5 +98,14 @@ class RTQ_Brain(DecisionBrain):
                 avgDelay=avgDelay,
             )
         self.s_star = np.argmax(self.utilityList)
-        
+    
+
+    def saveModel(self, modelFile):
+        with open(modelFile, 'w') as f:
+            f.writelines("pktLossRate,{}\n".format(self.chPktLossEst.getEstVal()))
+            f.writelines("delay,{}\n".format(self.chRTTEst.getEstVal()))
+            f.writelines("delay_var,{}\n".format(self.chRTTVarEst.getEstVal()))
+            f.writelines("s*,{}\n".format(self.s_star))
+            
+        self.logger.info("Save Q Table to csv file", modelFile)
         

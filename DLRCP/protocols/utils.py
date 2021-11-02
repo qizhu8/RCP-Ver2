@@ -270,12 +270,13 @@ class Window(object):
                     ))
         return removedPktNum
 
-    def getTimeoutPkts(self, curTime: int, RTO: int = -1, pktLossEst=None) -> list:
+    def getTimeoutPkts(self, updateTxAttempt: bool, curTime: int, RTO: int = -1, pktLossEst=None) -> list:
         """
         Collect packets that are regarded as timeout to be retransmitted.
         Update the packet info once a packet is decided to be retransmitted.
 
         inputs:
+            updateTxAttempt: whether to let pkt.txAttempt + 1
             curTime: int, current time
             RTO: int, current retransmission timeout
 
@@ -299,7 +300,8 @@ class Window(object):
                 pktList.append(self.buffer[pid].toPacket())
 
                 # update packet info
-                self.updatePktInfo_retrans(pid, curTime)
+                if updateTxAttempt:
+                    self.updatePktInfo_retrans(pid, curTime) 
 
                 # update performance estimator if any
                 if pktLossEst:
@@ -417,6 +419,9 @@ class RTTEst(object):
 
     def getRTO(self) -> float:
         return self.RTO
+    
+    def getRTTVar(self) -> float:
+        return self.RTTVAR
 
     def multiplyRTO(self, multiplier: float) -> None:
         self.RTO *= multiplier

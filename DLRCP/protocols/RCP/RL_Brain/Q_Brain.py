@@ -127,7 +127,7 @@ class QTable(object):
         return False
 
     def saveToCSV(self, filename):
-        np.savetxt(filename, self.table, delimiter=",")
+        np.savetxt(filename, self.table, delimiter=",", fmt='%f')
 
     def loadFromCSV(self, filename):
         self.table = np.loadtxt(filename, delimiter=",")
@@ -232,13 +232,18 @@ class Q_Brain(DecisionBrain):
         nextStateQ_max = max(self.QTable.getQ(state=newState))
         prevStateQ_new = (1-self.eta) * nextStateQ_max + reward
 
+        # if action == 0: # we have ignored the packet, no more gain
+        #     # we want to smooth the reward
+        #     nextStateQ_max = self.QTable.getQ(prevState)[0] 
+        #     prevStateQ_new = self.eta * nextStateQ_max + (1-self.eta) * reward
+        # else:
+        #     nextStateQ_max = max(self.QTable.getQ(state=newState))
+        #     prevStateQ_new = self.eta * nextStateQ_max + reward
+        
+
         self.loss = np.abs(self.QTable.getQ(prevState)[action] - prevStateQ_new)
 
         self.QTable.setQ(prevState, action, prevStateQ_new)
-        self.logger.debug("learning (S, A, r, S'): ({s_old}, {a}, {r}, {s_new})".format(
-            s_old=prevState, a=action, r=reward, s_new=newState
-        ))
-
         super().learn()
 
     def loadModel(self, modelFile):

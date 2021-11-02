@@ -37,7 +37,7 @@ def run_test_beta(args):
         firstDigit=int(beta) % 10,
         secondDigit=int(beta * 10) % 10
     )
-    subprocess.run([PYTHON3, "runTest.py",
+    argList = [PYTHON3, "runTest.py",
                     "--bgClientNum", "3",
                     "--serviceRate", "3",
                     "--pktDropProb", "0.3",
@@ -56,7 +56,11 @@ def run_test_beta(args):
                     "--addRCPQLearning",
                     # "--addRCPDQN",
                     "--addRCPRTQ",
-                    ])
+                    ]
+    # whether to use multi-processing to run the test of different protocols
+    # Appropriate for the first test
+
+    subprocess.run(argList)
 
 def main():
     startTime = time.time()

@@ -134,21 +134,18 @@ class RCP(BaseTransportLayerProtocol):
 
             if not self.learnRetransmissionOnly:
                 reward = self.calcUtility(1, delay)
-
-                finalState = [
-                        pktTxAttempts,
-                        delay,
-                        self.RTTEst.getRTT(),
-                        self.perfDict["pktLossHat"],
-                        self.perfDict["avgDelay"],
-                        self.RTTEst.getRTTVar(),
-                    ]
                 # store the ACKed packet info
                 self.RL_Brain.digestExperience(
                     prevState=self.window.getPktRLState(pid),
                     action=1,
                     reward=reward,
-                    curState=finalState
+                    curState=[
+                        pktTxAttempts,
+                        delay,
+                        self.RTTEst.getRTT(),
+                        self.perfDict["pktLossHat"],
+                        self.perfDict["avgDelay"]
+                    ]
                 )
 
             self.window.PopPkt(pid)
@@ -196,7 +193,7 @@ class RCP(BaseTransportLayerProtocol):
         self.perfDict["ignorePkts"] += removedPktNum
 
         # pkts to retransmit
-        timeoutPktSet = self.window.getTimeoutPkts(updateTxAttempt=False,
+        timeoutPktSet = self.window.getTimeoutPkts(
             curTime=self.time, RTO=self.RTTEst.getRTO(), pktLossEst=self._pktLossUpdate)
 
         # generate pkts and update buffer information
@@ -210,8 +207,7 @@ class RCP(BaseTransportLayerProtocol):
                 delay,
                 self.RTTEst.getRTT(),
                 self.perfDict["pktLossHat"],
-                self.perfDict["avgDelay"],
-                self.RTTEst.getRTTVar(),
+                self.perfDict["avgDelay"]
             ]
 
             # action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
@@ -226,10 +222,9 @@ class RCP(BaseTransportLayerProtocol):
 
             if action == 0:
                 # ignored
-                self._ignorePktAndUpdateMemory(pkt, decesionState=decesionState, popKey=True, firstTxAttempt=False)
+                self._ignorePktAndUpdateMemory(pkt.pid, decesionState=decesionState, popKey=True)
             else:
                 self.window.setPktRLState(pkt.pid, decesionState)
-                self.window.updatePktInfo_retrans(pkt.pid, self.time)
                 retransPktList += self.window.getPkts([pkt.pid])
 
         return retransPktList
@@ -237,33 +232,15 @@ class RCP(BaseTransportLayerProtocol):
     def _getNewPktsToSend(self):
         """transmit all packets in txBuffer"""
         newPktList = []
-        txAttempts = 0
-        delay = 0
         for _ in range(len(self.txBuffer)):
-            pkt = self.txBuffer.popleft()
+            newpkt = self.txBuffer.popleft()
 
-            pkt.txTime = self.time
-            pkt.initTxTime = self.time
-            
+            newpkt.txTime = self.time
+            newpkt.initTxTime = self.time
 
-            decesionState = [
-                txAttempts,
-                delay,
-                self.RTTEst.getRTT(),
-                self.perfDict["pktLossHat"],
-                self.perfDict["avgDelay"],
-                self.RTTEst.getRTTVar(),
-            ]
-            # action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
-            action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=self.getSysUtil())
+            self._addNewPktAndUpdateMemory(newpkt)
 
-
-            if action == 0:
-                # ignored
-                self._ignorePktAndUpdateMemory(pkt, decesionState=decesionState, popKey=True, firstTxAttempt=True)
-            else:
-                self._addNewPktAndUpdateMemory(pkt)
-                newPktList.append(pkt)
+            newPktList.append(newpkt)
 
         #
 
@@ -283,13 +260,11 @@ class RCP(BaseTransportLayerProtocol):
             avgDelay=delay,
         )
 
-    def _ignorePktAndUpdateMemory(self, pkt, decesionState, popKey=True,  firstTxAttempt=False):
+    def _ignorePktAndUpdateMemory(self, pid, decesionState, popKey=True):
         """
         inputs:
-            pkt: the packet that is ignored
+            pid: int, the pid of the packet that is ignored
             decesionState: list(float), the state before taking the action (being igored)
-            popKey: remove the pkt from cwnd
-            firstTxAttempt: whether the packet has never been transmitted. Since such a packet may not been added to the window.
         """
         # if we ignore a packet, even though we harm the delivery rate, but we contribute to delay
         self.perfDict["ignorePkts"] += 1
@@ -298,28 +273,16 @@ class RCP(BaseTransportLayerProtocol):
         self._deliveryRateUpdate(isDelivered=False)  # update delivery rate
 
         # if pid in self.buffer:
-        pid = pkt.pid
-        if firstTxAttempt or self.window.isPktInWindow(pid):
-            if firstTxAttempt:
-                finalState = [
-                    0,
-                    0,
+        if self.window.isPktInWindow(pid):
+            txAttemps = self.window.getPktTxAttempts(pid)
+            delay = self.time - self.window.getPktGenTime(pid)
+            finalState = [
+                    txAttemps,
+                    delay,
                     self.RTTEst.getRTT(),
                     self.perfDict["pktLossHat"],
-                    self.perfDict["avgDelay"],
-                    self.RTTEst.getRTTVar(),
+                    self.perfDict["avgDelay"]
                 ]
-            if self.window.isPktInWindow(pid):
-                txAttemps = self.window.getPktTxAttempts(pid)
-                delay = self.time - self.window.getPktGenTime(pid)
-                finalState = [
-                        txAttemps,
-                        delay,
-                        self.RTTEst.getRTT(),
-                        self.perfDict["pktLossHat"],
-                        self.perfDict["avgDelay"],
-                        self.RTTEst.getRTTVar(),
-                    ]
 
             # ignore a packet results in zero changes of system utility, so getSysUtil
             reward = self.getSysUtil()
@@ -338,12 +301,11 @@ class RCP(BaseTransportLayerProtocol):
 
     def _addNewPktAndUpdateMemory(self, pkt: Packet):
         RLState = [
-            0,  # once used, it must be transmitted once.
+            1,  # once used, it must be transmitted once.
             self.time - pkt.genTime,
             self.RTTEst.getRTT(),
             self.perfDict["pktLossHat"],
-            self.perfDict["avgDelay"],
-            self.RTTEst.getRTTVar(),
+            self.perfDict["avgDelay"]
         ]
 
         self.window.pushNewPkt(self.time, pkt, RLState)

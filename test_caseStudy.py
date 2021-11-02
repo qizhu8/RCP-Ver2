@@ -37,7 +37,7 @@ def run_test_beta(args):
         firstDigit=int(beta) % 10,
         secondDigit=int(beta * 10) % 10
     )
-    subprocess.run([PYTHON3, "runTest.py",
+    argList = [PYTHON3, "runTest.py",
                     "--bgClientNum", "0",
                     "--serviceRate", "3",
                     "--pktDropProb", "0.3",
@@ -56,7 +56,10 @@ def run_test_beta(args):
                     "--addRCPQLearning",
                     # "--addRCPDQN",
                     "--addRCPRTQ",
-                    ])
+                    ]
+
+    subprocess.run(argList)
+
 def main():
     startTime = time.time()
     for utilityMethod in utilityMethodList:

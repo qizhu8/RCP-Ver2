@@ -63,7 +63,7 @@ class Window_ARQ(BaseTransportLayerProtocol):
         self._handleACK(ACKPktList)
 
         # handle timeout packets
-        pktsToRetransmit = self.window.getTimeoutPkts(
+        pktsToRetransmit = self.window.getTimeoutPkts(updateTxAttempt=True,
             curTime=self.time, RTO=self.RTTEst.getRTO(), pktLossEst=self._pktLossUpdate)
         self.perfDict["retransAttempts"] += len(pktsToRetransmit)
 
