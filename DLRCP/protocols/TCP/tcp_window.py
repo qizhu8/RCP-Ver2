@@ -10,16 +10,16 @@ from DLRCP.common import Packet, PacketType
 
 class TCP_NewReno(BaseTransportLayerProtocol):
     requiredKeys = {"timeout"}
-    optionalKeys = {"IW": 4, 
-                    "maxTxAttempts": -1, # no maximum retransmission
-                    "maxPktTxDDL": -1,  
+    optionalKeys = {"IW": 4,
+                    "maxTxAttempts": -1,  # no maximum retransmission
+                    "maxPktTxDDL": -1,
                     # utility
                     # "alpha": 2,  # shape of utility function
                     # "beta1": 0.9, "beta2": 0.1,   # beta1: emphasis on delivery, beta2: emphasis on delay
                     # time-discount delivery
                     # "timeDiscount": 0.9,  # reward will be raised to timeDiscound^delay
                     # "timeDivider": 100,
-                    } 
+                    }
 
     # TCP state
     SLOW_START = 0
@@ -28,8 +28,9 @@ class TCP_NewReno(BaseTransportLayerProtocol):
     CONGESTION_AVOIDANCE = 3
     FAST_RECOVERY = 4
 
-    def __init__(self, suid, duid, params, loglevel=BaseTransportLayerProtocol.LOGLEVEL):
-        super().__init__(suid=suid, duid=duid, params=params, loglevel=loglevel)
+    def __init__(self, suid, duid, params, loglevel=BaseTransportLayerProtocol.LOGLEVEL, create_file: bool = False):
+        super().__init__(suid=suid, duid=duid, params=params,
+                         loglevel=loglevel, create_file=create_file)
 
         self.window = Window(uid=suid, maxCwnd=-1, maxPktTxDDL=self.maxPktTxDDL,
                              maxTxAttempts=self.maxTxAttempts, ACKMode="other", loglevel=loglevel)
@@ -79,8 +80,9 @@ class TCP_NewReno(BaseTransportLayerProtocol):
             nReTx=len(pktsToRetransmit),
             newTx=len(newPktList)
         ))
-        
-        self.perfDict["maxWin"] = max(self.perfDict["maxWin"], self.window.bufferSize())
+
+        self.perfDict["maxWin"] = max(
+            self.perfDict["maxWin"], self.window.bufferSize())
 
         return pktsToRetransmit + newPktList
 
@@ -92,7 +94,7 @@ class TCP_NewReno(BaseTransportLayerProtocol):
         ACKPidList = []
         for pkt in ACKPktList:
             if pkt.duid == self.suid and pkt.pktType == PacketType.ACK:
-                
+
                 self._pktLossUpdate(False)
                 self.perfDict["receivedACK"] += 1
 
@@ -106,7 +108,6 @@ class TCP_NewReno(BaseTransportLayerProtocol):
                     self.RTTEst.Update(rtt, self.perfDict)
                     delay = self.time - genTime
                     self._delayUpdate(delay, update=True)
-                
 
         retransmitPktList = self._handleACK_reno(ACKPidList)
 
@@ -140,12 +141,12 @@ class TCP_NewReno(BaseTransportLayerProtocol):
             if pid == self.lastACKCounter[0]:  # maybe dup ACK
                 self.lastACKCounter[1] += 1
             else:  # new ack
-                
-                # ACKed the packets in range 
+
+                # ACKed the packets in range
                 # [self.lastACKCounter[0]+1, self.lastACKCounter+2, ..., pid]
                 for _ in range(pid-self.lastACKCounter[0]):
                     self._deliveryRateUpdate(True)
-                
+
                 self.lastACKCounter = [pid, 1]
 
                 if self.curTxMode in {TCP_NewReno.SLOW_START, TCP_NewReno.CONGESTION_AVOIDANCE}:
@@ -168,7 +169,7 @@ class TCP_NewReno(BaseTransportLayerProtocol):
                         self.cwnd = max(self.cwnd, 0)  # TODO
                         pktToRetransmit += self.window.getPkts([pid+1])
                         self.window.updatePktInfo_retrans(pid+1, self.time)
-                        
+
                         self._pktLossUpdate(False)
                         # self._deliveryRateUpdate
                     # self._timeoutUpdate()
@@ -244,7 +245,6 @@ class TCP_NewReno(BaseTransportLayerProtocol):
             pkt.initTxTime = self.time
             pkt.txAttempts = 1
 
-            
             pktList.append(pkt)
         self.window.pushNewPkts(self.time, pktList)
 

@@ -8,6 +8,7 @@ import csv
 from .DecisionBrain import DecisionBrain
 from DLRCP.protocols.utils import AutoRegressEst
 
+
 class RTQ_Brain(DecisionBrain):
     """
     This is the traditional Q-Learning algorithm where state s is an integer.
@@ -19,12 +20,12 @@ class RTQ_Brain(DecisionBrain):
                  # method to choose action. e.g. "argmax" or "ThompsonSampling"
                  updateFrequency: int = 8,    # period to learn the best s
                  loglevel: int = DecisionBrain.LOGLEVEL,
+                 createLogFile: bool = False,
                  ) -> None:
 
         # super().__init__(loglevel)
         super().__init__(convergeLossThresh=100,
-            epsilon=1, epsilon_decay=1,loglevel=loglevel)
-
+                         epsilon=1, epsilon_decay=1, loglevel=loglevel, createLogFile=createLogFile)
 
         # nStates here is the number of different states, not the dimension of a state
         assert retransMax > 1, "For RTQ, retransMax must be > 1"
@@ -42,16 +43,17 @@ class RTQ_Brain(DecisionBrain):
         self.s_star = 0
 
         self.loss = 0
-    
+
     def calcDelvyRate(self, chPktLossRate, rx):
         return 1 - chPktLossRate**rx
 
     # def calcDelay(self, chPktLossRate, onewayDelay, rx):
     #     return onewayDelay * (-(chPktLossRate**rx)*rx + (1-chPktLossRate**rx)/(1-chPktLossRate)) / ( 1 - chPktLossRate**rx)
-    
+
     def calcDelay(self, gamma, rtt, rxMax):
-        rto_div_rtt = 3 # rto = 3 * rtt
-        delay = rtt * (1 + rto_div_rtt*(gamma - gamma**rxMax)/(1-gamma) - (rto_div_rtt*rxMax-2)*(gamma**rxMax))
+        rto_div_rtt = 3  # rto = 3 * rtt
+        delay = rtt * (1 + rto_div_rtt*(gamma - gamma**rxMax) /
+                       (1-gamma) - (rto_div_rtt*rxMax-2)*(gamma**rxMax))
         return delay
 
     def _parseState(self, state):
@@ -69,7 +71,6 @@ class RTQ_Brain(DecisionBrain):
             self.calcBestS()
         self.learningCounter = (self.learningCounter+1) % self.learningPeriod
 
-
         # qVals = self.QTable.getQ(state)
         # if baseline_Q0 is not None:
         #     qVals[0] = baseline_Q0
@@ -82,10 +83,13 @@ class RTQ_Brain(DecisionBrain):
         # return action
 
         return txAttempts < self.s_star
-    
+
     def digestExperience(self, prevState, action, reward, curState) -> None:
         "no need for this function"
-        return 
+        self.logger.debug("exp:{prevState},{action},{reward},{newState}".format(
+            prevState=prevState, action=action, reward=reward, newState=curState
+        ))
+        return
 
     def calcBestS(self):
         smoothedPktLossRate = self.chPktLossEst.getEstVal()
@@ -98,14 +102,13 @@ class RTQ_Brain(DecisionBrain):
                 avgDelay=avgDelay,
             )
         self.s_star = np.argmax(self.utilityList)
-    
 
     def saveModel(self, modelFile):
         with open(modelFile, 'w') as f:
-            f.writelines("pktLossRate,{}\n".format(self.chPktLossEst.getEstVal()))
+            f.writelines("pktLossRate,{}\n".format(
+                self.chPktLossEst.getEstVal()))
             f.writelines("delay,{}\n".format(self.chRTTEst.getEstVal()))
             f.writelines("delay_var,{}\n".format(self.chRTTVarEst.getEstVal()))
             f.writelines("s*,{}\n".format(self.s_star))
-            
-        self.logger.info("Save Q Table to csv file", modelFile)
-        
+
+        self.logger.info("Save Q Table to csv file"+modelFile)

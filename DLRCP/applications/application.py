@@ -79,7 +79,7 @@ class EchoClient(object):
 
         trafficParamHandleDict[trafficMode](trafficParam)
 
-    def __init__(self, clientId, serverId, protocolName, transportParam, trafficMode, trafficParam, verbose=False):
+    def __init__(self, clientId, serverId, protocolName, transportParam, trafficMode, trafficParam, verbose=False, create_file: bool = False):
         self.uid = clientId
         self.duid = serverId
         self.verbose = verbose
@@ -96,7 +96,7 @@ class EchoClient(object):
 
         # the implemented protocol instance
         self.transportObj = TransportLayerHelper(
-            suid=self.uid, duid=self.duid, protocolName=protocolName, params=transportParam, verbose=verbose)
+            suid=self.uid, duid=self.duid, protocolName=protocolName, params=transportParam, verbose=verbose, create_file=create_file)
 
         # init time
         self.time = -1
@@ -183,16 +183,16 @@ class EchoClient(object):
 
     def getProtocolName(self):
         return self.transportObj.protocolName
-    
+
     def getRTT(self):
         return self.transportObj.instance.getRTT()
-    
+
     def getRTO(self):
         return self.transportObj.instance.getRTO()
-    
+
     def getCalcUtilityHandler(self):
         return self.transportObj.instance.calcUtility
-    
+
     def clientSidePerf(self, verbose=False):
         return self.transportObj.instance.clientSidePerf(verbose=verbose)
 
@@ -226,8 +226,6 @@ class EchoServer(object):
         # packet ack counter, the latest sequential ack
         self.ACKMode = self.parseACKMode(ACKMode)
         self._inititalize()
-        
-    
 
     def _inititalize(self):
         self.ack = -1  # last ACKed packet id or maximum packet id
@@ -257,7 +255,6 @@ class EchoServer(object):
 
         #
         self.loadFromDatafile = False
-
 
     def reset(self):
         self._inititalize()

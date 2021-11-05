@@ -12,7 +12,7 @@ class TransportLayerHelper(object):
 
     """
 
-    def __init__(self, suid, duid, protocolName, params, verbose=False):
+    def __init__(self, suid, duid, protocolName, params, verbose=False, create_file: bool=False):
         supportProtocols = {
             "udp": UDP,
             "window arq": Window_ARQ,
@@ -33,7 +33,7 @@ class TransportLayerHelper(object):
             list(supportProtocols.keys).__str__()
 
         self.instance = supportProtocols[self.protocolName](
-            suid=suid, duid=duid, params=params, loglevel=loglevel)
+            suid=suid, duid=duid, params=params, loglevel=loglevel, create_file=create_file)
 
         # some protocol will add a more detailed suffix, e.g. ARQ_finit_window
         self.protocolName = self.instance.protocolName

@@ -55,7 +55,6 @@ def calc_qij_approx_norm(beta, mean, var, rx, timeDivider):
     qij = sum(beta_exp_x * pdf * dx)
     return qij
 
-
 def calc_utility(delay, delvy, alpha, beta, timeDivider):
     r = (beta**(delay/timeDivider)) * (delvy**alpha)
     return r

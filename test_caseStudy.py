@@ -27,7 +27,7 @@ alphaList = [2]
 # alphaList = [0.5, 1, 2, 3, 4]
 betaList = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
 # betaList = [0.8]
-# betaList = [0.9, 1]
+# betaList = [0.9]
 
 
 def run_test_beta(args):
@@ -86,10 +86,11 @@ def main():
             # use multiprocessing to generate the remaining test results
             n_worker = multiprocessing.cpu_count()
             needed_worker = min(n_worker-1, len(argList[1:]))
-            pool = multiprocessing.Pool(processes=needed_worker)
-            pool.map(run_test_beta, argList[1:])
-            pool.close()
-            pool.join()
+            if needed_worker > 0: # we still have work to do
+                pool = multiprocessing.Pool(processes=needed_worker)
+                pool.map(run_test_beta, argList[1:])
+                pool.close()
+                pool.join()
 
             subprocess.run([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
                         "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])

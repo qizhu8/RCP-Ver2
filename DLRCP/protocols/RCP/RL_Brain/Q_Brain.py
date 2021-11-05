@@ -149,11 +149,12 @@ class Q_Brain(DecisionBrain):
                  decisionMethod: str = "argmax",
                  decisionMethodArgs: dict = {},  # support parameters
                  loglevel: int = DecisionBrain.LOGLEVEL,
+                 createLogFile:bool=False
                  ) -> None:
 
         # super().__init__(loglevel)
         super().__init__(convergeLossThresh=convergeLossThresh,
-            epsilon=epsilon, epsilon_decay=epsilon_decay,loglevel=loglevel)
+            epsilon=epsilon, epsilon_decay=epsilon_decay,loglevel=loglevel,createLogFile=createLogFile)
 
         self.nActions = nActions
 

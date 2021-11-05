@@ -11,7 +11,6 @@ from .RL_Brain import Q_Brain
 from .RL_Brain import RTQ_Brain
 
 
-
 class RCP(BaseTransportLayerProtocol):
     requiredKeys = {"RLEngine"}
     optionalKeys = {
@@ -33,8 +32,9 @@ class RCP(BaseTransportLayerProtocol):
         # "timeDivider": 100,
     }
 
-    def __init__(self, suid: int, duid: int, params: dict = ..., loglevel=BaseTransportLayerProtocol.LOGLEVEL) -> None:
-        super().__init__(suid, duid, params=params, loglevel=loglevel)
+    def __init__(self, suid: int, duid: int, params: dict = ..., loglevel=BaseTransportLayerProtocol.LOGLEVEL, create_file: bool = False) -> None:
+        super().__init__(suid, duid, params=params,
+                         loglevel=loglevel, create_file=create_file)
 
         self.protocolName = self.__class__.__name__ + self.RLEngine
 
@@ -64,6 +64,8 @@ class RCP(BaseTransportLayerProtocol):
                 decisionMethod="argmax",
                 decisionMethodArgs={},  # support parameters, e.g. mapfunc=np.exp
                 loglevel=logging.INFO,
+                # loglevel=logging.DEBUG,
+                createLogFile=False,
             )
 
         def _initDQNEngine():
@@ -81,13 +83,15 @@ class RCP(BaseTransportLayerProtocol):
                 convergeLossThresh=self.convergeLossThresh,
                 verbose=False
             )
-        
+
         def _initRTQEngine():
             self.RL_Brain = RTQ_Brain(
                 utilityCalcHandler=self.calcUtility,
                 retransMax=self.maxTxAttempts,
                 updateFrequency=8,
-                loglevel=logging.INFO
+                loglevel=logging.INFO,
+                # loglevel=logging.DEBUG,
+                createLogFile=False,
             )
 
         _initRLEngineDict = {
@@ -109,7 +113,7 @@ class RCP(BaseTransportLayerProtocol):
         for pkt in ACKPktList:
             # only process designated packets
             if pkt.duid == self.suid and pkt.pktType == PacketType.ACK:
-                
+
                 # update pktLoss, RTT and delay
                 rtt = self.time-pkt.txTime
                 delay = self.time - pkt.genTime
@@ -136,13 +140,13 @@ class RCP(BaseTransportLayerProtocol):
                 reward = self.calcUtility(1, delay)
 
                 finalState = [
-                        pktTxAttempts,
-                        delay,
-                        self.RTTEst.getRTT(),
-                        self.perfDict["pktLossHat"],
-                        self.perfDict["avgDelay"],
-                        self.RTTEst.getRTTVar(),
-                    ]
+                    pktTxAttempts,
+                    delay,
+                    self.RTTEst.getRTT(),
+                    self.perfDict["pktLossHat"],
+                    self.perfDict["avgDelay"],
+                    self.RTTEst.getRTTVar(),
+                ]
                 # store the ACKed packet info
                 self.RL_Brain.digestExperience(
                     prevState=self.window.getPktRLState(pid),
@@ -197,7 +201,7 @@ class RCP(BaseTransportLayerProtocol):
 
         # pkts to retransmit
         timeoutPktSet = self.window.getTimeoutPkts(updateTxAttempt=False,
-            curTime=self.time, RTO=self.RTTEst.getRTO(), pktLossEst=self._pktLossUpdate)
+                                                   curTime=self.time, RTO=self.RTTEst.getRTO(), pktLossEst=self._pktLossUpdate)
 
         # generate pkts and update buffer information
         retransPktList = []
@@ -215,9 +219,10 @@ class RCP(BaseTransportLayerProtocol):
             ]
 
             # action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
-            action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=self.getSysUtil())
+            action = self.RL_Brain.chooseAction(
+                state=decesionState, baseline_Q0=self.getSysUtil())
             # if self.RLEngine.upper() in {"DQN"}:
-            #     # for DQN, we shouldn't interfere its learning strategy. 
+            #     # for DQN, we shouldn't interfere its learning strategy.
             #     action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
             # else:
             #     action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=self.getSysUtil())
@@ -226,7 +231,8 @@ class RCP(BaseTransportLayerProtocol):
 
             if action == 0:
                 # ignored
-                self._ignorePktAndUpdateMemory(pkt, decesionState=decesionState, popKey=True, firstTxAttempt=False)
+                self._ignorePktAndUpdateMemory(
+                    pkt, decesionState=decesionState, popKey=True, firstTxAttempt=False)
             else:
                 self.window.setPktRLState(pkt.pid, decesionState)
                 self.window.updatePktInfo_retrans(pkt.pid, self.time)
@@ -244,7 +250,6 @@ class RCP(BaseTransportLayerProtocol):
 
             pkt.txTime = self.time
             pkt.initTxTime = self.time
-            
 
             decesionState = [
                 txAttempts,
@@ -255,12 +260,13 @@ class RCP(BaseTransportLayerProtocol):
                 self.RTTEst.getRTTVar(),
             ]
             # action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
-            action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=self.getSysUtil())
-
+            action = self.RL_Brain.chooseAction(
+                state=decesionState, baseline_Q0=self.getSysUtil())
 
             if action == 0:
                 # ignored
-                self._ignorePktAndUpdateMemory(pkt, decesionState=decesionState, popKey=True, firstTxAttempt=True)
+                self._ignorePktAndUpdateMemory(
+                    pkt, decesionState=decesionState, popKey=True, firstTxAttempt=True)
             else:
                 self._addNewPktAndUpdateMemory(pkt)
                 newPktList.append(pkt)
@@ -313,13 +319,13 @@ class RCP(BaseTransportLayerProtocol):
                 txAttemps = self.window.getPktTxAttempts(pid)
                 delay = self.time - self.window.getPktGenTime(pid)
                 finalState = [
-                        txAttemps,
-                        delay,
-                        self.RTTEst.getRTT(),
-                        self.perfDict["pktLossHat"],
-                        self.perfDict["avgDelay"],
-                        self.RTTEst.getRTTVar(),
-                    ]
+                    txAttemps,
+                    delay,
+                    self.RTTEst.getRTT(),
+                    self.perfDict["pktLossHat"],
+                    self.perfDict["avgDelay"],
+                    self.RTTEst.getRTTVar(),
+                ]
 
             # ignore a packet results in zero changes of system utility, so getSysUtil
             reward = self.getSysUtil()

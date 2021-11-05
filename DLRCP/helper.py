@@ -13,7 +13,6 @@ from DLRCP.applications import EchoClient, EchoServer
 from DLRCP.channel import ConstDelayChannel, RandomDelayChannel
 from DLRCP.common import RangeUniform
 
-
 def get_opts():
     parser = argparse.ArgumentParser(description='RCP-Ver 2.0')
 
@@ -31,7 +30,7 @@ def get_opts():
                         help='the folder to store the temp data for Non-RCP protocol test result. Default to be [data-dir]/[testDesc]/')
 
     # Channel Type
-    parser.add_argument('--channelType', type=str, default='RandomDelayChannel',
+    parser.add_argument('--channelType', type=str, default='RandomDelayChannel', choices=['RandomDelayChannel', 'ConstDelayChannel'],
                         help='type of the channel RandomDelayChannel or ConstDelayChannel')
     parser.add_argument('--serviceRate', type=int, default=3,
                         help='channel service rate')
@@ -44,6 +43,8 @@ def get_opts():
                         help='a list of delay used by the selected channel. If RandomDelayChannel, a list of the min&max of the random number. If ConstDelayChannel, one integer is needed')
     parser.add_argument('--fillChannel', dest='fillChannel', default=False,
                         action='store_true', help="whether to fill the channel with environment packets")
+    parser.add_argument('--channelInstruct', dest='chInsList', default=[],
+                        help="scheduled instructions for the channel to execute. E.g. 200 serviceRate 3 400 channelDelay 120,140 ")
 
     # environment setting
     parser.add_argument('--bgClientNum', type=int, default=4,
@@ -52,8 +53,8 @@ def get_opts():
                         help='# pkt to send by the background UDP client per tick')
 
     # utility setting
-    parser.add_argument('--utilityMethod', type=str, default='timeDiscount',
-                        help="utility method. 'timeDiscount', 'sumPower'")
+    parser.add_argument('--utilityMethod', type=str, default='TimeDiscount', choices=[
+                        'TimeDiscount', 'SumPower'], help="utility method. 'TimeDiscount', 'SumPower'")
     parser.add_argument('--timeDivider', type=float, default=100,
                         help='ticks per time unit')
     parser.add_argument('--alpha', type=float, default=2.0,
@@ -143,7 +144,7 @@ def _loadOpts(opts):
 def prepareDataStorageFolder(opts):
     tgtPath = os.path.join(opts.data_dir, opts.testDesc)
     os.makedirs(tgtPath, exist_ok=True)
-    
+
     if opts.nonRCPDatadir:
         tgtPath = os.path.join(opts.nonRCPDatadir)
         os.makedirs(tgtPath, exist_ok=True)
@@ -165,7 +166,6 @@ def cleanPrevDataFiles(opts):
         subprocess.run(["rm", os.path.join(tgtPath, "*.json")], shell=True)
 
 
-
 def genChannel(opts):
     assert opts.channelType in {
         "RandomDelayChannel", "ConstDelayChannel"}, "channelType not supported. Should be either RandomDelayChannel or ConstDelayChannel"
@@ -177,6 +177,7 @@ def genChannel(opts):
             bufferSize=opts.bufferSize,
             rng=RangeUniform(opts.channelDelay[0], opts.channelDelay[1]),
             pktDropProb=opts.pktDropProb,
+            insList=opts.chInsList,
             loglevel=logging.INFO)
     if opts.channelType == "ConstDelayChannel":
         channel = ConstDelayChannel(
@@ -184,6 +185,7 @@ def genChannel(opts):
             bufferSize=opts.bufferSize,
             delay=opts.channelDelay[0],
             pktDropProb=opts.pktDropProb,
+            insList=opts.insList,
             loglevel=logging.INFO)
 
     return channel
@@ -316,7 +318,7 @@ def genRCPQLearning(opts):
                 "beta": opts.beta,
             },
             trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": opts.pktRate},
-            verbose=False)
+            verbose=False, create_file=False)
         server_RL_Q = EchoServer(serverId=511, ACKMode="SACK", verbose=False)
         return [client_RL_Q], [server_RL_Q]
     return [], []
@@ -347,6 +349,7 @@ def genRCPDQN(opts):
         return [client_RL_DQN], [server_RL_DQN]
     return [], []
 
+
 def genRCPRTQ(opts):
     if opts.addRCPRTQ:
         client_RL_RTQ = EchoClient(
@@ -373,6 +376,7 @@ def genRCPRTQ(opts):
         return [client_RL_RTQ], [server_RL_RTQ]
     return [], []
 
+
 def fillChannel(opts, channel, bgClients):
     if opts.fillChannel:
         print("filling the channel with background packets")
@@ -391,12 +395,12 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
     serverPerfFilename = test_client.getProtocolName()+"_perf.pkl"
 
     if loadFromHistoryIfPossible and test_client.getProtocolName().lower() not in {"rcpdqn", "rcpq_learning", "rcprtq"}:
-        if opts.nonRCPDatadir: # stored in the specified temp folder
+        if opts.nonRCPDatadir:  # stored in the specified temp folder
             serverPerfFilename = os.path.join(
                 opts.nonRCPDatadir, serverPerfFilename)
-        else: # same as result folder
+        else:  # same as result folder
             serverPerfFilename = os.path.join(
-            opts.data_dir, opts.testDesc, serverPerfFilename)
+                opts.data_dir, opts.testDesc, serverPerfFilename)
 
         # check whether can load the previous performance file directly
         if os.path.exists(serverPerfFilename):
@@ -504,7 +508,8 @@ def printTestProtocolPerf(opts, test_clients, test_servers, storePerfBrief=True)
         deliveredPktsPerSlot[client.getProtocolName()] = dict()
 
         server.printPerf(client.getPktGen(), client.getProtocolName())
-        clientPerfDict = client.transportObj.instance.clientSidePerf(verbose=True)
+        clientPerfDict = client.transportObj.instance.clientSidePerf(
+            verbose=True)
 
         # store data
         deliveredPktsPerSlot[client.getProtocolName()]["serverPerf"] = [
@@ -534,13 +539,14 @@ def printTestProtocolPerf(opts, test_clients, test_servers, storePerfBrief=True)
                       deliveredPkts,
                       delvyRate,
                       avgDelay,
-                      client.transportObj.instance.calcUtility(delvyRate=delvyRate, avgDelay=avgDelay),
+                      client.transportObj.instance.calcUtility(
+                          delvyRate=delvyRate, avgDelay=avgDelay),
                       last25percPkts,
                       last25percDelveyRate,
                       last25percDelay,
                       last25percUtil,
                       clientPerfDict["loss"]
-        ])
+                      ])
 
     deliveredPktsPerSlot["general"] = table
     deliveredPktsPerSlot["header"] = header

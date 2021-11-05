@@ -54,10 +54,12 @@ class DQN_Brain(DecisionBrain):
                  convergeLossThresh: int = 1,   # turn off greedy policy when loss is below
                  eta: float = 0.9,              # reward discount
                  loglevel: int = DecisionBrain.LOGLEVEL,
+                 createLogFile: bool = False,
                  verbose=None                   # deprecated
                  ) -> None:
 
-        super().__init__(convergeLossThresh=convergeLossThresh, epsilon=epsilon, epsilon_decay=epsilon_decay, loglevel=loglevel)
+        super().__init__(convergeLossThresh=convergeLossThresh, epsilon=epsilon,
+                         epsilon_decay=epsilon_decay, loglevel=loglevel, createLogFile=createLogFile)
 
         # automatically transfer to cuda if available
         self.device = torch.device(
@@ -139,7 +141,8 @@ class DQN_Brain(DecisionBrain):
         if self.memory.nExp <= 0:
             return
 
-        self.updateFrequencyCur = (self.updateFrequencyCur+1) % self.updateFrequencyFinal
+        self.updateFrequencyCur = (
+            self.updateFrequencyCur+1) % self.updateFrequencyFinal
         if self.updateFrequencyCur % self.updateFrequencyFinal == self.updateFrequencyFinal-1:
             # transfer the weight of the evalNet to tgtNet
             self.tgtNet.load_state_dict(self.evalNet.state_dict())

@@ -11,8 +11,9 @@ class DecisionBrain(object):
         convergeLossThresh:float=1.0, 
         epsilon=0.95,       
         epsilon_decay=0.99,
-        loglevel=LOGLEVEL) -> None:
-        self.initLogger(loglevel)
+        loglevel=LOGLEVEL,
+        createLogFile=False) -> None:
+        self.initLogger(loglevel, createLogFile)
 
         self.globalEvalOn = False  # True: ignore greedy random policy
 
@@ -24,15 +25,22 @@ class DecisionBrain(object):
         self.epsilon_decay = epsilon_decay
         self.epsilon_default = epsilon
 
-    def initLogger(self, loglevel):
+    def initLogger(self, loglevel, create_file=False):
         self.logger = logging.getLogger(type(self).__name__)
         self.logger.setLevel(loglevel)
-
+        
+        formatter = logging.Formatter(
+                '%(levelname)s:{classname}:%(message)s'.format(classname=type(self).__name__))
         if not self.logger.handlers:
             sh = logging.StreamHandler()
-            formatter = logging.Formatter(
-                '%(levelname)s:{classname}:%(message)s'.format(classname=type(self).__name__))
             sh.setFormatter(formatter)
+
+        if create_file:
+            # create file handler for logger.
+            fh = logging.FileHandler(type(self).__name__+'.log')
+            fh.setLevel(loglevel)
+            fh.setFormatter(formatter)
+            self.logger.addHandler(fh)
 
     def loadModel(self, modelFile):
         """load a previously save modelfile"""

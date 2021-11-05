@@ -15,7 +15,9 @@ import logging
 
 from DLRCP.common import Packet
 from DLRCP.common import BaseRNG, RangeUniform
+from DLRCP.common import Scheduler
 from .buffer import FIFOBuffer, PriorityBuffer
+
 
 class BaseChannel(object):
     """
@@ -51,7 +53,7 @@ class BaseChannel(object):
         assert _val >= 0 and _val <= 1, _desc+" must be an integer > 0"
         return _val
 
-    def __init__(self, serviceRate: int = 1, bufferSize: int = 0, pktDropProb: float = 0, loglevel: int = LOGLEVEL):
+    def __init__(self, serviceRate: int = 1, bufferSize: int = 0, pktDropProb: float = 0, insList=[], loglevel: int = LOGLEVEL):
         self.serviceRate = BaseChannel.checkPosInt(serviceRate, "serviceRate")
         self.bufferSize = BaseChannel.parseQueueSize(bufferSize)
         self.pktDropProb = BaseChannel.checkProb(pktDropProb, "pktDropProb")
@@ -59,6 +61,9 @@ class BaseChannel(object):
 
         self.time = 0
         self.channelBuffer = None
+
+        # a scheduler that specify the changes and the trigger time.
+        self.scheduler = Scheduler(insList)
 
     def initBuffer(self):
         self.time = 0
@@ -96,6 +101,20 @@ class BaseChannel(object):
 
     def timeElapse(self):
         self.time += 1
+        self.followScheduler()
+
+    # not called. Saved for future use
+    def initScheduler(self, insList):
+        self.scheduler.addInstructionList(insList)
+
+    def followScheduler(self):
+        insList = self.scheduler.getInstruction(self.time)
+        for ins in insList:
+            attributeName, value = ins.attributeName, ins.value
+            if hasattr(self, attributeName):
+                setattr(self, attributeName, value)
+                self.logger.info("change "+attributeName +
+                                 " to "+value.__str__())
 
     def __str__(self):
         s = "channel:{channelClass}\n\tserviceRate:{serviceRate}\n\tpktDropProb:{pktDropProb}\n{bufferState}".format(
@@ -130,9 +149,9 @@ class ConstDelayChannel(BaseChannel):
         A channel that introduces constant delay
     """
 
-    def __init__(self, serviceRate: int = 1, delay: int = 0, bufferSize: int = 0, pktDropProb: float = 0, loglevel: int = BaseChannel.LOGLEVEL):
+    def __init__(self, serviceRate: int = 1, delay: int = 0, bufferSize: int = 0, pktDropProb: float = 0, insList=[], loglevel: int = BaseChannel.LOGLEVEL):
         super().__init__(serviceRate=serviceRate, bufferSize=bufferSize,
-                         pktDropProb=pktDropProb, loglevel=loglevel)
+                         pktDropProb=pktDropProb, insList=insList, loglevel=loglevel)
         self.delay = BaseChannel.checkNonNegInt(delay, "serviceRate")
 
         self.channelBuffer = FIFOBuffer(
@@ -186,9 +205,10 @@ class RandomDelayChannel(BaseChannel):
     Each packet that enters the channel will be given a random delay. 
     """
 
-    def __init__(self, serviceRate: int = 1, delay: int = 0, bufferSize: int = 0, rng: BaseRNG = RangeUniform(1, 10), pktDropProb: float = 0, loglevel: int = BaseChannel.LOGLEVEL):
+    def __init__(self, serviceRate: int = 1, delay: int = 0, bufferSize: int = 0, rng: BaseRNG = RangeUniform(1, 10), pktDropProb: float = 0, insList=[], loglevel: int = BaseChannel.LOGLEVEL):
         super().__init__(serviceRate=serviceRate, bufferSize=bufferSize,
-                         pktDropProb=pktDropProb, loglevel=loglevel)
+                         pktDropProb=pktDropProb, insList=insList,
+                         loglevel=loglevel)
         self.rng = rng
 
         # self.channelBuffer = FIFOBuffer(bufferSize=self.bufferSize, delay=self.delay)

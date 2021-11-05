@@ -160,23 +160,24 @@ def gather_Q_table(resultFolder, subFolderPrefix, configAttributeName):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='RCP-Ver 2.0 - plot for time discount')
-    parser.add_argument('--resultFolder', type=str, default= 'Results/case_study_TimeDiscount_alpha_2_0', required=False,
-                        help='parent folder that stores multiple test results')
-    parser.add_argument('--subFolderPrefix', type=str, default= 'TimeDiscount', required=False,
-                        help='prefix of the subfolder that stores each test result')
-    parser.add_argument('--configAttributeName', type=str, default= 'beta',
-                        help='the attribute name that changes among the experimetns')
-    # parser.add_argument('--resultFolder', type=str, default= '', required=True,
+    # parser.add_argument('--resultFolder', type=str, default= 'Results/case_study_TimeDiscount_alpha_2_0', required=False,
     #                     help='parent folder that stores multiple test results')
-    # parser.add_argument('--subFolderPrefix', type=str, default= '', required=True,
+    # parser.add_argument('--subFolderPrefix', type=str, default= 'TimeDiscount', required=False,
     #                     help='prefix of the subfolder that stores each test result')
     # parser.add_argument('--configAttributeName', type=str, default= 'beta',
     #                     help='the attribute name that changes among the experimetns')
 
+    parser.add_argument('--resultFolder', type=str, default= '', required=True,
+                        help='parent folder that stores multiple test results')
+    parser.add_argument('--subFolderPrefix', type=str, default= '', required=True,
+                        help='prefix of the subfolder that stores each test result')
+    parser.add_argument('--configAttributeName', type=str, default= 'beta',
+                        help='the attribute name that changes among the experimetns')
+
     opts = parser.parse_args()
 
-    # attributeNameList=attributeNameDict.keys()
-    # for attributeName in attributeNameList:
-    #     process_one_attribute(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName, attributeName)
+    attributeNameList=attributeNameDict.keys()
+    for attributeName in attributeNameList:
+        process_one_attribute(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName, attributeName)
     
     gather_Q_table(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName)

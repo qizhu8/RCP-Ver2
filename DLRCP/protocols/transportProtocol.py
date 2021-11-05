@@ -72,7 +72,7 @@ class BaseTransportLayerProtocol(object):
                 setattr(self, key, utilityKeys[key])
 
 
-    def __init__(self, suid: int, duid: int, params: dict = {}, loglevel=LOGLEVEL) -> None:
+    def __init__(self, suid: int, duid: int, params: dict = {}, loglevel=LOGLEVEL, create_file:bool=False) -> None:
         """
         1. define protocolName                                          self.protocolName
         2. set the link information,                                    self.suid, self.duid
@@ -85,11 +85,13 @@ class BaseTransportLayerProtocol(object):
         6. declare (but no memory allocation) the Tx window if needed   self.window
         7. declare a dictionary to store tranmission performance        self.perfDict
         """
-        self.initLogger(loglevel)
 
         self.protocolName = self.__class__.__name__
         self.suid = suid
         self.duid = duid
+
+        self.initLogger(loglevel, create_file)
+
 
         # assign values to
         self.parseParamByMode(
@@ -144,16 +146,22 @@ class BaseTransportLayerProtocol(object):
         for key, val in BaseTransportLayerProtocol.defaultPerfDict.items():
             self.perfDict[key] = val
 
-    def initLogger(self, loglevel: int) -> None:
+    def initLogger(self, loglevel: int, create_file: bool=False) -> None:
         """This function is implemented in multiple base classes. """
         self.logger = logging.getLogger(type(self).__name__)
         self.logger.setLevel(loglevel)
-
+        formatter = logging.Formatter(
+            '%(levelname)s:{classname}:%(message)s'.format(classname=type(self).__name__))
         if not self.logger.handlers:
             sh = logging.StreamHandler()
-            formatter = logging.Formatter(
-                '%(levelname)s:{classname}:%(message)s'.format(classname=type(self).__name__))
             sh.setFormatter(formatter)
+        
+        if create_file:
+            # create file handler for logger.
+            fh = logging.FileHandler(self.protocolName+'.log')
+            fh.setLevel(loglevel)
+            fh.setFormatter(formatter)
+            self.logger.addHandler(fh)
 
     def acceptNewPkts(self, pktList: List[Packet]) -> None:
         """
@@ -245,7 +253,6 @@ class BaseTransportLayerProtocol(object):
         
         # exponential
         r = (self.beta**(avgDelay/self.timeDivider)) * (delvyRate**self.alpha)
-
         return r
         
     def clientSidePerf(self, verbose=False):
