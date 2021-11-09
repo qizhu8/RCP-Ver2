@@ -20,7 +20,7 @@ class RCP(BaseTransportLayerProtocol):
         "memoryCapacity": 1e5,      #
         "updateFrequency": 100,     # period to replace target network with evaluation
         "gamma": 0.9,               # reward discount
-        "epsilon": 0.7,             # greedy policy parameter
+        "epsilon": 0.5,             # greedy policy parameter
         "epsilon_decay": 0.7,
         "convergeLossThresh": 0.01,  # below which we consider the network as converged
         "learnRetransmissionOnly": False,
@@ -59,13 +59,14 @@ class RCP(BaseTransportLayerProtocol):
                 epsilon=self.epsilon,       # greedy policy parameter
                 eta=self.gamma,             # reward discount
                 epsilon_decay=self.epsilon_decay,
-                updateFrequency=1000,
+                updateFrequency=100,
                 # method to choose action. e.g. "argmax" or "ThompsonSampling"
                 decisionMethod="argmax",
                 decisionMethodArgs={},  # support parameters, e.g. mapfunc=np.exp
                 loglevel=logging.INFO,
                 # loglevel=logging.DEBUG,
                 createLogFile=False,
+                calcBellmanTimeDiscountHandler=self.calcBellmanTimeDiscountHandler,
             )
 
         def _initDQNEngine():
@@ -146,6 +147,8 @@ class RCP(BaseTransportLayerProtocol):
                     self.perfDict["pktLossHat"],
                     self.perfDict["avgDelay"],
                     self.RTTEst.getRTTVar(),
+                    self.RTTEst.getRTO(),
+                    self.perfDict['deliveryRate']
                 ]
                 # store the ACKed packet info
                 self.RL_Brain.digestExperience(
@@ -201,7 +204,9 @@ class RCP(BaseTransportLayerProtocol):
 
         # pkts to retransmit
         timeoutPktSet = self.window.getTimeoutPkts(updateTxAttempt=False,
-                                                   curTime=self.time, RTO=self.RTTEst.getRTO(), pktLossEst=self._pktLossUpdate)
+                                                   curTime=self.time, RTO=self.RTTEst.getRTO(), 
+                                                   pktLossEst=self._pktLossUpdate
+                                                   )
 
         # generate pkts and update buffer information
         retransPktList = []
@@ -216,6 +221,8 @@ class RCP(BaseTransportLayerProtocol):
                 self.perfDict["pktLossHat"],
                 self.perfDict["avgDelay"],
                 self.RTTEst.getRTTVar(),
+                self.RTTEst.getRTO(),
+                self.perfDict['deliveryRate']
             ]
 
             # action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
@@ -258,7 +265,10 @@ class RCP(BaseTransportLayerProtocol):
                 self.perfDict["pktLossHat"],
                 self.perfDict["avgDelay"],
                 self.RTTEst.getRTTVar(),
+                self.RTTEst.getRTO(),
+                self.perfDict['deliveryRate']
             ]
+
             # action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
             action = self.RL_Brain.chooseAction(
                 state=decesionState, baseline_Q0=self.getSysUtil())
@@ -314,6 +324,8 @@ class RCP(BaseTransportLayerProtocol):
                     self.perfDict["pktLossHat"],
                     self.perfDict["avgDelay"],
                     self.RTTEst.getRTTVar(),
+                    self.RTTEst.getRTO(),
+                    self.perfDict['deliveryRate']
                 ]
             if self.window.isPktInWindow(pid):
                 txAttemps = self.window.getPktTxAttempts(pid)
@@ -325,6 +337,8 @@ class RCP(BaseTransportLayerProtocol):
                     self.perfDict["pktLossHat"],
                     self.perfDict["avgDelay"],
                     self.RTTEst.getRTTVar(),
+                    self.RTTEst.getRTO(),
+                    self.perfDict['deliveryRate']
                 ]
 
             # ignore a packet results in zero changes of system utility, so getSysUtil
@@ -350,6 +364,8 @@ class RCP(BaseTransportLayerProtocol):
             self.perfDict["pktLossHat"],
             self.perfDict["avgDelay"],
             self.RTTEst.getRTTVar(),
+            self.RTTEst.getRTO(),
+            self.perfDict['deliveryRate']
         ]
 
         self.window.pushNewPkt(self.time, pkt, RLState)

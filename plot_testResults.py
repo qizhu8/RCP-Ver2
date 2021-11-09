@@ -114,7 +114,8 @@ def gather_Q_table(resultFolder, subFolderPrefix, configAttributeName):
         maximumSimulationSmax = 15
         RTQPerf = np.loadtxt(RTQEstFilename, delimiter=",", usecols=[1])
         RTQ_pktLossRate, RTQ_delay, RTQ_delay_var, RTQ_smax =  RTQPerf
-        RTQ_v, _ = theoTool.calc_V_theo_norm(RTQ_pktLossRate, timeDivider, alpha, beta, RTQ_delay, RTQ_delay_var, maximumSimulationSmax)
+        # RTQ_v, _ = theoTool.calc_V_theo_norm(RTQ_pktLossRate, timeDivider, alpha, beta, RTQ_delay, RTQ_delay_var, maximumSimulationSmax)
+        RTQ_v, _ = theoTool.calc_V_theo_uniform(RTQ_pktLossRate, timeDivider, alpha, beta, RTQ_delay-2*RTQ_delay_var, RTQ_delay+2*RTQ_delay_var, maximumSimulationSmax)
         RTQDict[key] = [RTQ_smax, RTQ_v]
 
 

@@ -5,6 +5,8 @@ import random
 import numpy as np
 import logging
 import csv
+
+from DLRCP.protocols.utils import AutoRegressEst
 from .DecisionBrain import DecisionBrain
 
 
@@ -116,13 +118,21 @@ class QTable(object):
 
         return np.zeros((self.nActions,))
 
-    def setQ(self, state, action, Qval):
+    def setQ(self, state, action, Qval, setAColumn=False):
+        """
+        Set Q values. 
+        if setAColumn is false (default), Q[state, action] = Qval
+        else Q[:, action] = Qval
+        """
         if self.autoExpand:
             # extend table if needed
             self._extendMoreStates2Hold(state)
             self._extendMoreActions2Hold(action)
         if state < self.nStates and action < self.nActions:
-            self.table[state, action] = Qval
+            if setAColumn:
+                self.table[:, action] = Qval
+            else:
+                self.table[state, action] = Qval
             return True
         return False
 
@@ -149,6 +159,7 @@ class Q_Brain(DecisionBrain):
                  decisionMethod: str = "argmax",
                  decisionMethodArgs: dict = {},  # support parameters
                  loglevel: int = DecisionBrain.LOGLEVEL,
+                 calcBellmanTimeDiscountHandler=None, # the handler to calculate Bellman time discount
                  createLogFile:bool=False
                  ) -> None:
 
@@ -167,9 +178,18 @@ class Q_Brain(DecisionBrain):
         self.updateFrequencyFinal = updateFrequency
 
         # nStates here is the number of different states, not the dimension of a state
-        self.QTable = QTable(nActions=self.nActions, nStates=2) 
+        self.QTable = QTable(nActions=self.nActions, nStates=2)
+
+        self.calcBellmanTimeDiscountHandler = calcBellmanTimeDiscountHandler
+        self.chRTOEst = AutoRegressEst(0.1)
 
         self.loss = sys.maxsize
+
+        # for debug
+        self.debugOn = True
+        self.debugLog = []
+
+        self.debugLogHead = "prevTxAttemp,prevDelay,prevRTT,prevChPktLoss,prevAvgDelay,prevRTTVar,prevRTO,prevDelvyRate,action,reward,curTxAttemp,curDelay,curRTT,curChPktLoss,curAvgDelay,curRTTVar,curRTO,curDelvyRate"
 
     def _parseDecisionMethod(self, decisionMethod:str, args:dict={}):
         def _initArgmax(args):
@@ -195,6 +215,12 @@ class Q_Brain(DecisionBrain):
     def _parseState(self, state):
         """Extract only the number of retransmission attempts from a full packet state"""
         return int(state[0])
+    
+    def _getRTT(self, state):
+        return float(state[2])
+    
+    def _getRTO(self, state):
+        return float(state[6])
 
     def chooseMaxQAction(self, state, baseline_Q0=None):
         # state = [txAttempts, delay, RTT, packetLossHat, averageDelay]
@@ -215,9 +241,15 @@ class Q_Brain(DecisionBrain):
         For traditional Q learning, it learns from the experience immediately.
         No memory storage.
         """
+        if self.debugOn:
+            record = prevState + [action, reward] + curState
+            self.debugLog.append(record)
+
+        self.chRTOEst.update(self._getRTO(curState))
+
         prevState, curState = self._parseState(
             prevState), self._parseState(curState)
-        
+
         self.learnReward(prevState, action, reward, curState)
 
         if self.learningCounter > self.updateFrequencyFinal:
@@ -226,25 +258,37 @@ class Q_Brain(DecisionBrain):
             self.learningCounter = 0
         self.learningCounter += 1
 
+        
+
     def learnReward(self, prevState, action, reward, newState):
         """
         learnReward function is called when the packet reaches the final state (delivered or dropped). 
         """
-        nextStateQ_max = max(self.QTable.getQ(state=newState))
-        prevStateQ_new = (1-self.eta) * nextStateQ_max + reward
+        if self.calcBellmanTimeDiscountHandler is not None:
+            timeDiscount = self.calcBellmanTimeDiscountHandler(self.chRTOEst.getEstVal())
+        else:
+            timeDiscount = 1
 
-        # if action == 0: # we have ignored the packet, no more gain
-        #     # we want to smooth the reward
-        #     nextStateQ_max = self.QTable.getQ(prevState)[0] 
-        #     prevStateQ_new = self.eta * nextStateQ_max + (1-self.eta) * reward
-        # else:
-        #     nextStateQ_max = max(self.QTable.getQ(state=newState))
-        #     prevStateQ_new = self.eta * nextStateQ_max + reward
+        
+        # / timeDiscount
+
+        # prevStateQ_new *= timeDiscount
+        # prevStateQ_new = ((1-self.eta) * nextStateQ_max + reward) / timeDiscount
+
+        if action == 0: # we have ignored the packet, no more gain
+            # we want to smooth the reward
+            prevStateQ_old = self.QTable.getQ(prevState)[0] 
+            prevStateQ_new = self.eta * prevStateQ_old + (1-self.eta) * reward
+            setAColumn = True
+        else:
+            nextStateQ_max = max(self.QTable.getQ(state=newState))
+            prevStateQ_new = timeDiscount * nextStateQ_max + reward
+            setAColumn = False
         
 
         self.loss = np.abs(self.QTable.getQ(prevState)[action] - prevStateQ_new)
 
-        self.QTable.setQ(prevState, action, prevStateQ_new)
+        self.QTable.setQ(prevState, action, prevStateQ_new, setAColumn=setAColumn)
         super().learn()
 
     def loadModel(self, modelFile):
@@ -254,6 +298,9 @@ class Q_Brain(DecisionBrain):
     def saveModel(self, modelFile):
         self.QTable.saveToCSV(modelFile)
         self.logger.info("Save Q Table to csv file", modelFile)
+
+        if self.debugOn:
+            np.savetxt(modelFile+"debug.csv", np.asarray(self.debugLog), header=self.debugLogHead, delimiter=",")
 
 
 if __name__ == "__main__":

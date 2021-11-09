@@ -354,7 +354,10 @@ class MovingAvgEst(object):
 
         return self.positiveNum / self.size
     
-    def getPktLossRate(self):
+    # def getPktLossRate(self):
+    #     return self.positiveNum / self.size
+    
+    def getEstVal(self) -> float:
         return self.positiveNum / self.size
 
 
@@ -406,7 +409,7 @@ class RTTEst(object):
 
         http://sgros.blogspot.com/2012/02/calculating-tcp-rto.html
         """
-        self.RTTVAR = self.RTTVAR * 0.75 + abs(self.RTTVAR-rtt) * 0.25
+        self.RTTVAR = self.RTTVAR * 0.75 + abs(self.SRTT-rtt) * 0.25
         self.SRTT = self.SRTT * 0.875 + rtt * (0.125)
         self.RTO = self.SRTT + max(1, 4*self.RTTVAR)
 

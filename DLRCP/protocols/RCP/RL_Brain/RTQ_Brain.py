@@ -7,6 +7,7 @@ import logging
 import csv
 from .DecisionBrain import DecisionBrain
 from DLRCP.protocols.utils import AutoRegressEst
+import DLRCP.theoreticalAnalysis as theoTool
 
 
 class RTQ_Brain(DecisionBrain):
@@ -38,34 +39,32 @@ class RTQ_Brain(DecisionBrain):
 
         # smoothed channel RTT and pktloss
         self.chRTTEst = AutoRegressEst(0.1)
+        self.chRTOEst = AutoRegressEst(0.1)
         self.chRTTVarEst = AutoRegressEst(0.1)
         self.chPktLossEst = AutoRegressEst(0.1)
         self.s_star = 0
 
         self.loss = 0
 
-    def calcDelvyRate(self, chPktLossRate, rx):
-        return 1 - chPktLossRate**rx
+    # def calcDelvyRate(self, chPktLossRate, rx):
+    #     return 1 - chPktLossRate**rx
 
-    # def calcDelay(self, chPktLossRate, onewayDelay, rx):
-    #     return onewayDelay * (-(chPktLossRate**rx)*rx + (1-chPktLossRate**rx)/(1-chPktLossRate)) / ( 1 - chPktLossRate**rx)
-
-    def calcDelay(self, gamma, rtt, rxMax):
-        rto_div_rtt = 3  # rto = 3 * rtt
-        delay = rtt * (1 + rto_div_rtt*(gamma - gamma**rxMax) /
-                       (1-gamma) - (rto_div_rtt*rxMax-2)*(gamma**rxMax))
-        return delay
+    # def calcDelay(self, gamma, rtt, rto, rxMax):
+    #     numerator = rtt + rto * (gamma * (1-gamma ** (rxMax-1)))/(1-gamma) - (rtt + (rxMax-1)*rto)*(gamma**rxMax)
+    #     denominator = 1 - gamma ** rxMax
+    #     return numerator / denominator
 
     def _parseState(self, state):
         """Extract only txAttempts, pktLossHat, avgDelay"""
-        return int(state[0]), state[2], state[3], state[5]
+        return int(state[0]), state[2], state[3], state[5], state[6]
 
     def chooseMaxQAction(self, state, baseline_Q0=None):
         # state = [txAttempts, delay, RTT, packetLossHat, averageDelay]
-        txAttempts, RTT, packetLossHat, RTTVar = self._parseState(state)
+        txAttempts, RTT, packetLossHat, RTTVar, RTO = self._parseState(state)
         self.chPktLossEst.update(packetLossHat)
         self.chRTTEst.update(RTT)
         self.chRTTVarEst.update(RTTVar)
+        self.chRTOEst.update(RTO)
 
         if self.learningCounter == 0:
             self.calcBestS()
@@ -94,9 +93,10 @@ class RTQ_Brain(DecisionBrain):
     def calcBestS(self):
         smoothedPktLossRate = self.chPktLossEst.getEstVal()
         smoothedDelay = self.chRTTEst.getEstVal()
+        smoothedRTO = self.chRTOEst.getEstVal()
         for rx in range(1, self.retransMax):
-            avgDelay = self.calcDelay(smoothedPktLossRate, smoothedDelay, rx)
-            avgDeliveryRate = self.calcDelvyRate(smoothedPktLossRate, rx)
+            avgDelay = theoTool.calc_delay_expect(smoothedPktLossRate, smoothedDelay, smoothedRTO, rx)
+            avgDeliveryRate = theoTool.calc_delvy_rate_expect(smoothedPktLossRate, rx)
             self.utilityList[rx] = self.utilityCalcHandler(
                 delvyRate=avgDeliveryRate,
                 avgDelay=avgDelay,

@@ -106,7 +106,8 @@ class BaseTransportLayerProtocol(object):
 
         self.RTTEst = RTTEst()                  # rtt, rto estimator
         self.pktLossEst = MovingAvgEst(size=500)  # estimate pkt loss rate
-        self.delvyRateEst = AutoRegressEst(alpha=0.01)
+        # self.delvyRateEst = AutoRegressEst(alpha=0.01)
+        self.delvyRateEst = MovingAvgEst(size=1000)
         self.delayEst = AutoRegressEst(alpha=0.01)
         self.retransProbEst = AutoRegressEst(alpha=0.01)
         self.RLLossEst = AutoRegressEst(alpha=0.01) # reserved for RL_Brain
@@ -125,7 +126,7 @@ class BaseTransportLayerProtocol(object):
 
         # local time at the client side
         self.time = -1
-    
+
     def reset(self):
         self.time=-1
         self.initPerfDict()
@@ -137,9 +138,14 @@ class BaseTransportLayerProtocol(object):
             "sumpower":self.calcUtility_sumPower, 
             "timediscount":self.calcUtility_timeDiscount,
             }
+        calcBellmanTimeDiscountHandlerDict={
+            "sumpower":self.calcBellmanTimeDiscount_sumPower, 
+            "timediscount":self.calcBellmanTimeDiscount_timeDiscount,
+        }
 
         if self.utilityMethod.lower() in calcUtilityHandlerDict:
             self.calcUtilityHandler = calcUtilityHandlerDict[self.utilityMethod.lower()]
+            self.calcBellmanTimeDiscountHandler = calcBellmanTimeDiscountHandlerDict[self.utilityMethod.lower()]
 
     def initPerfDict(self):
         """initialize perfDict to default values"""
@@ -207,7 +213,6 @@ class BaseTransportLayerProtocol(object):
         The probability of a packet being delivered after multiple retransmission
         """
         self.perfDict["deliveryRate"] = self.delvyRateEst.update(int(isDelivered))
-        
 
     def _pktLossUpdate(self, isLost:bool):
         """The channel packet loss probability"""
@@ -249,11 +254,21 @@ class BaseTransportLayerProtocol(object):
         r = -self.beta * ((1-delvyRate)**self.alpha) - (1-self.beta) * ((avgDelay/self.timeDivider)**self.alpha)
         return r
 
+    def calcBellmanTimeDiscount_sumPower(self, deltaDelay: float) -> float:
+        discount = (1-self.beta) ** (deltaDelay / self.timeDivider) # TODO: not sure.
+        return discount
+
     def calcUtility_timeDiscount(self, delvyRate: float, avgDelay: float) -> float:
         
         # exponential
-        r = (self.beta**(avgDelay/self.timeDivider)) * (delvyRate**self.alpha)
+        r = (self.beta**(avgDelay / self.timeDivider)) * (delvyRate**self.alpha)
         return r
+    
+    def calcBellmanTimeDiscount_timeDiscount(self, deltaDelay: float) -> float:
+        discount = self.beta ** (deltaDelay / self.timeDivider)
+        # print("beta discount {beta} {discount} {approx}".format(beta=self.beta, discount=discount, approx=self.beta**(125*3/100)))
+        # discount = self.beta ** (125*3/self.timeDivider)
+        return discount
         
     def clientSidePerf(self, verbose=False):
         if verbose:
