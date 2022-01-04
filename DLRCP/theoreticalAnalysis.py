@@ -10,9 +10,15 @@ def calc_delvy_rate_expect(gamma, rxMax):
 
 
 def calc_delay_expect(gamma, rtt, rto, rxMax):
+    if gamma == 1:
+        return rtt + rto * (rxMax-1)
     numerator = rtt + rto * (gamma * (1-gamma ** (rxMax-1)))/(1-gamma) - (rtt + (rxMax-1)*rto)*(gamma**rxMax)
     denominator = 1 - gamma ** rxMax
     return numerator / denominator
+
+def calc_utility(delay, delvy, alpha, beta, timeDivider):
+    r = (beta**(delay/timeDivider)) * (delvy**alpha)
+    return r
 
 
 def calc_qij_approx_uniform(beta, a, b, rx, timeDivider):
@@ -45,69 +51,88 @@ def calc_qij_approx_norm(beta, mean, var, rx, timeDivider):
     qij is the expected reward discount between state i and state j
     Channel delay is a Gaussian
 
-    But !!!!! var here is not variance, because from RFC, var = E[|rtt - mean|]
-    var is more a standard deviation
+    But !!!!! var here is not variance. According to RFC, var = E[|rtt - mean|]
+    var is more a standard deviation. rto is approximated by mean + 4 * std 
+
     """
-    var *= var
+    # var *= var
 
     rto = mean + 4*var
     # mean is the average time gap between state i and state j, which is 
     # mean = (j-i) * rto
-    mean = (rto*rx)/timeDivider
+    mean = (rto*rx)
 
     var *= rx
 
     segments = 1000
-    sigma = math.sqrt(var) # three sigma rule
+    # sigma = math.sqrt(var) # three sigma rule
+    sigma = var
     # sample from [-sigma_multi*sigma, +sigma_multi*sigma]+mean
     sigma_multi = 3
     dx = 2*sigma_multi*sigma / segments
     x = np.linspace(mean-sigma_multi*sigma, mean+sigma_multi*sigma, segments)
-    beta_exp_x = np.power(beta, x)
+    beta_exp_x = np.power(beta, x/timeDivider)
     pdf = norm.pdf(x, loc=mean, scale=sigma)
     qij = sum(beta_exp_x * pdf * dx)
     return qij
 
-def calc_utility(delay, delvy, alpha, beta, timeDivider):
-    r = (beta**(delay/timeDivider)) * (delvy**alpha)
-    return r
+def gValCalc(txTimes, rtt, rttvar, txMax, gamma, alpha, beta, timeDivider):
+    """
+    Calculated the reward vector g
+    """
+    if txTimes <= txMax:
+        """
+        option 1 - not good. 
+        If delay is large, even delivery = 1, utility is still low.
+        Accepting a long delay pkt will not significantly reduce system utility, but even increase it 
+        because the witness probability is small. 
+        """
+        # gVal = calc_utility(pktDelay, 1, alpha, beta, timeDivider)
+        """
+        option 2. 
+        Since reward is acquired when a packet is delivered, pktDeliveryRate = 1.
+        Since the utility cares about expected delay rather than the per-packet delay, we need to calculate the expected delay instead of the current packet delay.
+        """
+        # pktDelvy = calc_delvy_rate_expect(gamma, txTimes)
+        pktDelvy = 1
+        pktDelay = calc_delay_expect(gamma, rtt, rtt+4*rttvar, txTimes)
+        gVal = calc_utility(pktDelay, pktDelvy, alpha, beta, timeDivider)
+    else:
+        gVal = 0
+    return gVal
+
 
 
 def calc_V_theo_uniform(gamma, timeDivider, alpha, beta, channelDelay_a, channelDelay_b, smax):
-    channelDelay = (channelDelay_a + channelDelay_b) / 2
+    rtt = (channelDelay_a + channelDelay_b) / 2
     # channelDelayVar = (channelDelay_b-channelDelay_a)**2 / 12
-    channelDelayVar = (channelDelay_b-channelDelay_a) / 4
-    channelRTO = channelDelay + 4 * channelDelayVar
+    rttvar = (channelDelay_b-channelDelay_a) / math.sqrt(12)
+    rto = rtt + 4 * rttvar
 
     utility = []
     for s in range(1, smax):
-        delay_s = calc_delay_expect(gamma, channelDelay, channelRTO, s)
+        delay_s = calc_delay_expect(gamma, rtt, rto, s)
         deliveryRate_s = calc_delvy_rate_expect(gamma, s)
         utility_s = calc_utility(
             delay_s, deliveryRate_s, alpha, beta, timeDivider)
         utility.append(utility_s)
     s = np.argmax(utility)+1  # our s is 1-index
     utility_s = utility[s-1]
-    AB = np.zeros((s, smax))  # the [A, B] matrix in mathematical model
-    qij_list = np.zeros(smax+1)
-    for drx in range(1, smax+1):
-        qij_list[drx] = calc_qij_approx_uniform(beta, channelDelay_a, channelDelay_b, drx, timeDivider)
-    qij_list /= sum(qij_list)
 
-    for col in range(1, smax+1):
-        for row in range(0, s):
-            if row+col < smax:
-                AB[row, row+col] = qij_list[col]
+    AB = np.zeros((s+1, s+1))  # the [A, B] matrix in mathematical model
+    q1 = calc_qij_approx_uniform(beta, channelDelay_a, channelDelay_b, 1, timeDivider)
 
-    A = AB[:, :s]
-    B = AB[:, s:]
-    delayCalc = lambda rx: channelDelay + (rx-1) * channelRTO
-    h = np.asarray([[utility_s]*(smax - s)]).T
-    g = np.asarray([[calc_utility(delayCalc(rx), 1, alpha,
-                   beta, timeDivider) for rx in range(1, s+1)]]).T
-    v_threory = np.linalg.pinv(
-        np.eye(s)-A).dot(B.dot(h) + (1-gamma)*g)
-    v = np.concatenate([v_threory[:, 0], h[:, 0]])
+    for row in range(0, s):
+        AB[row, row+1] = q1
+    
+    g = np.asarray([[gValCalc(tx, rtt, rtt, s, gamma, alpha, beta) for tx in range(1, s+2)]]).T
+    h = np.zeros((s+1, 1))
+    h[s, 0] = utility_s
+
+    v_coeff = np.eye(s+1) - gamma * AB
+    v_coeff_inv = np.linalg.pinv(v_coeff)
+    v_theory = v_coeff_inv.dot(h + g)
+    v = np.concatenate([v_theory[:, 0], [utility_s]*(smax-s-1)])
     return v, s
 
 
@@ -115,38 +140,34 @@ def calc_V_theo_norm(gamma, timeDivider, alpha, beta, mean, var, smax):
     """
     Pay great attention here, var != var(RTT). In RFC, var ~ \Exp[RTT - RTT_mean]
     """
-    channelDelay = mean
-    channelRTO = mean + 4 * var
+
+    rtt = mean
+    rttvar = var
+    rto = mean + 4 * var
     utility = []
     for s in range(1, smax):
-        delay_s = calc_delay_expect(gamma, channelDelay, channelDelay + 4*var, s)
+        delay_s = calc_delay_expect(gamma, rtt, rto, s)
         deliveryRate_s = calc_delvy_rate_expect(gamma, s)
         utility_s = calc_utility(
             delay_s, deliveryRate_s, alpha, beta, timeDivider)
         utility.append(utility_s)
     s = np.argmax(utility)+1  # our s is 1-index
     utility_s = utility[s-1]
-    AB = np.zeros((s, smax))  # the [A, B] matrix in mathematical model
-    qij_list = np.zeros(smax+1)
-    for drx in range(1, smax+1):
-        qij_list[drx] = calc_qij_approx_norm(beta, mean, var, drx, timeDivider)
-    qij_list /= sum(qij_list)
 
-    for col in range(1, smax+1):
-        for row in range(0, s):
-            if row+col < smax:
-                AB[row, row+col] = qij_list[col]
+    AB = np.zeros((s+1, s+1))  # the [A, B] matrix in mathematical model
+    q1 = calc_qij_approx_norm(beta, rtt, var, 1, timeDivider)
 
-    A = AB[:, :s]
-    B = AB[:, s:]
+    for row in range(0, s):
+        AB[row, row+1] = q1
 
-    delayCalc = lambda rx: channelDelay + (rx-1) * channelRTO
-    h = np.asarray([[utility_s]*(smax - s)]).T
-    g = np.asarray([[calc_utility(delayCalc(rx), 1, alpha,
-                   beta, timeDivider) for rx in range(1, s+1)]]).T
-    v_threory = np.linalg.pinv(
-        np.eye(s)-A).dot(B.dot(h) + (1-gamma)*g)
-    v = np.concatenate([v_threory[:, 0], h[:, 0]])
+    g = np.asarray([[gValCalc(tx, mean, var, s, gamma, alpha, beta, timeDivider) for tx in range(1, s+2)]]).T
+    h = np.zeros((s+1, 1))
+    h[s] = utility_s
+
+    v_coeff = np.eye(s+1) - gamma * AB
+    v_coeff_inv = np.linalg.pinv(v_coeff)
+    v_theory = v_coeff_inv.dot(h + g)
+    v = np.concatenate([v_theory[:, 0], [utility_s]*(smax-s-1)])
     return v, s
 
 
@@ -197,13 +218,20 @@ if __name__ == "__main__":
     print("qij")
     print(qij_list)
 
-    for col in range(1, smax+1):
-        for row in range(0, s):
-            if row+col < smax:
-                AB[row, row+col] = qij_list[col]
+    # for col in range(1, smax+1):
+    #     for row in range(0, s):
+    #         if row+col < smax:
+    #             AB[row, row+col] = qij_list[col]
+
+    for row in range(0, s):
+        AB[row, row+1] = qij_list[1]
+
 
     A = AB[:, :s]
     B = AB[:, s:]
+
+    print("AB", AB.shape)
+    print(AB)
 
     h = np.asarray([[utility_s]*(smax - s)]).T
     g = np.asarray([[calc_utility(channelDelay*rx, 1, alpha,

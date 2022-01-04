@@ -6,6 +6,8 @@ from typing import List
 from DLRCP.common.packet import Packet, PacketType
 from DLRCP.protocols.utils import AutoRegressEst, MovingAvgEst, RTTEst, Window
 from DLRCP.protocols.transportProtocol import BaseTransportLayerProtocol
+import DLRCP.theoreticalAnalysis as theoTool
+
 from .RL_Brain import DQN_Brain
 from .RL_Brain import Q_Brain
 from .RL_Brain import RTQ_Brain
@@ -20,7 +22,7 @@ class RCP(BaseTransportLayerProtocol):
         "memoryCapacity": 1e5,      #
         "updateFrequency": 100,     # period to replace target network with evaluation
         "gamma": 0.9,               # reward discount
-        "epsilon": 0.5,             # greedy policy parameter
+        "epsilon": 0.9,             # greedy policy parameter
         "epsilon_decay": 0.7,
         "convergeLossThresh": 0.01,  # below which we consider the network as converged
         "learnRetransmissionOnly": False,
@@ -139,6 +141,7 @@ class RCP(BaseTransportLayerProtocol):
 
             if not self.learnRetransmissionOnly:
                 reward = self.calcUtility(1, delay)
+                # reward = self.calcPktUtility(self.perfDict["pktLossHat"], self.RTTEst.getRTT(), self.RTTEst.getRTO(), pktTxAttempts)
 
                 finalState = [
                     pktTxAttempts,
@@ -150,6 +153,7 @@ class RCP(BaseTransportLayerProtocol):
                     self.RTTEst.getRTO(),
                     self.perfDict['deliveryRate']
                 ]
+
                 # store the ACKed packet info
                 self.RL_Brain.digestExperience(
                     prevState=self.window.getPktRLState(pid),
@@ -158,12 +162,14 @@ class RCP(BaseTransportLayerProtocol):
                     curState=finalState
                 )
 
+
             self.window.PopPkt(pid)
 
     def ticking(self, ACKPktList: List[Packet] = []) -> List[Packet]:
         self.timeElapse()
 
         self.perfDict["maxWin"] = self.window.perfDict["maxWinCap"]
+        self.perfDict["curWin"] = self.window.bufferSize()
 
         self._RLLossUpdate(self.RL_Brain.loss)
         self.perfDict["epsilon"] = self.RL_Brain.epsilon
@@ -194,6 +200,10 @@ class RCP(BaseTransportLayerProtocol):
             self.perfDict["maxWin"], self.window.bufferSize())
         self.pktIgnoredCounter.append(self.perfDict["ignorePkts"])
 
+
+        # record perf in this tick
+        self._recordPerfInThisTick()
+
         return pktsToRetransmit + newPktList
 
     def _getRetransPkts(self) -> List[Packet]:
@@ -212,6 +222,8 @@ class RCP(BaseTransportLayerProtocol):
         retransPktList = []
         for pkt in timeoutPktSet:
             txAttempts = self.window.getPktTxAttempts(pkt.pid)
+
+
             delay = self.time - pkt.genTime
             # use RL to make a decision
             decesionState = [
@@ -228,11 +240,6 @@ class RCP(BaseTransportLayerProtocol):
             # action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
             action = self.RL_Brain.chooseAction(
                 state=decesionState, baseline_Q0=self.getSysUtil())
-            # if self.RLEngine.upper() in {"DQN"}:
-            #     # for DQN, we shouldn't interfere its learning strategy.
-            #     action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
-            # else:
-            #     action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=self.getSysUtil())
 
             self._retransUpdate(action)
 
@@ -271,7 +278,7 @@ class RCP(BaseTransportLayerProtocol):
 
             # action = self.RL_Brain.chooseAction(state=decesionState,baseline_Q0=None)
             action = self.RL_Brain.chooseAction(
-                state=decesionState, baseline_Q0=self.getSysUtil())
+                state=decesionState, baseline_Q0=None)
 
             if action == 0:
                 # ignored
@@ -286,8 +293,6 @@ class RCP(BaseTransportLayerProtocol):
         return newPktList
 
     """RL related functions"""
-    # def calcReward(self, isDelivered, retentionTime):
-
     def getSysUtil(self, delay=None):
         # get the current system utility
 
@@ -316,7 +321,8 @@ class RCP(BaseTransportLayerProtocol):
         # if pid in self.buffer:
         pid = pkt.pid
         if firstTxAttempt or self.window.isPktInWindow(pid):
-            if firstTxAttempt:
+            if firstTxAttempt: # this packet has just entered the TxBuffer.
+                txAttemps = 0
                 finalState = [
                     0,
                     0,
@@ -327,7 +333,7 @@ class RCP(BaseTransportLayerProtocol):
                     self.RTTEst.getRTO(),
                     self.perfDict['deliveryRate']
                 ]
-            if self.window.isPktInWindow(pid):
+            elif self.window.isPktInWindow(pid):
                 txAttemps = self.window.getPktTxAttempts(pid)
                 delay = self.time - self.window.getPktGenTime(pid)
                 finalState = [
@@ -341,8 +347,11 @@ class RCP(BaseTransportLayerProtocol):
                     self.perfDict['deliveryRate']
                 ]
 
-            # ignore a packet results in zero changes of system utility, so getSysUtil
+            # Ignore a packet results in zero changes of system utility, because a lost packet
+            # will only affect delivery rate a little.
             reward = self.getSysUtil()
+            # print("ignore pkt tx", txAttemps)
+            # reward = self.calcSysUtil_expected(self.perfDict["pktLossHat"], self.RTTEst.getRTT(), self.RTTEst.getRTO(), txAttemps)
 
             self.RL_Brain.digestExperience(
                 prevState=decesionState,

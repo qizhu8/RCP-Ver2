@@ -12,7 +12,7 @@ import DLRCP.theoreticalAnalysis as theoTool
 
 class RTQ_Brain(DecisionBrain):
     """
-    This is the traditional Q-Learning algorithm where state s is an integer.
+    This is the optimal policy based on the Semi-MDP model. State s is the number of (re)transmission attempts.
     """
 
     def __init__(self,
@@ -59,7 +59,7 @@ class RTQ_Brain(DecisionBrain):
         return int(state[0]), state[2], state[3], state[5], state[6]
 
     def chooseMaxQAction(self, state, baseline_Q0=None):
-        # state = [txAttempts, delay, RTT, packetLossHat, averageDelay]
+        # state = [txAttempts, delay, RTT, packetLossHat, averageDelay, RTTVar, RTO]
         txAttempts, RTT, packetLossHat, RTTVar, RTO = self._parseState(state)
         self.chPktLossEst.update(packetLossHat)
         self.chRTTEst.update(RTT)
@@ -69,17 +69,6 @@ class RTQ_Brain(DecisionBrain):
         if self.learningCounter == 0:
             self.calcBestS()
         self.learningCounter = (self.learningCounter+1) % self.learningPeriod
-
-        # qVals = self.QTable.getQ(state)
-        # if baseline_Q0 is not None:
-        #     qVals[0] = baseline_Q0
-        # # method 1 - Pure Q-based method
-        # action = qVals.argmax()
-
-        # # method 2 - Thompson sampling based method
-        # # action = ThompsonSampling.randIntFromPMF(
-        # #     pmf=qVals, norm=True, map=None)
-        # return action
 
         return txAttempts < self.s_star
 
@@ -107,8 +96,9 @@ class RTQ_Brain(DecisionBrain):
         with open(modelFile, 'w') as f:
             f.writelines("pktLossRate,{}\n".format(
                 self.chPktLossEst.getEstVal()))
-            f.writelines("delay,{}\n".format(self.chRTTEst.getEstVal()))
-            f.writelines("delay_var,{}\n".format(self.chRTTVarEst.getEstVal()))
+            f.writelines("RTT,{}\n".format(self.chRTTEst.getEstVal()))
+            f.writelines("RTTVar,{}\n".format(self.chRTTVarEst.getEstVal()))
+            f.writelines("RTO,{}\n".format(self.chRTOEst.getEstVal()))
             f.writelines("s*,{}\n".format(self.s_star))
 
         self.logger.info("Save Q Table to csv file"+modelFile)

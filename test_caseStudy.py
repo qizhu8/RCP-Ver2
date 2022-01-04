@@ -24,22 +24,34 @@ PYTHON3 = sys.executable  # get the python interpreter
 utilityMethodList = ["TimeDiscount"]
 # utilityMethodList = ["SumPower"]
 alphaList = [2]
+alphaDigitPrecision = 2
 # alphaList = [0.5, 1, 2, 3, 4]
 betaList = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+betaDigitPrecision = 3 # number of digits to represent beta
 # betaList = [0.8]
 # betaList = [0.9]
 
+def serializeDigit(num, digitPrec):
+    """
+    turn number to a list of digits
+    E.g, 0.82 -> [0, 8, 2]
+    """
+    s = []
+    for _ in range(digitPrec):
+        s.append(str(int(num) % 10))
+        num *= 10
+    return s
 
 def run_test_beta(args):
     beta, alpha, utilityMethod, resultFolderName, tempFileFolderName = args
     print("conducting experiment for ", utilityMethod, " beta=", beta)
-    testDesc = utilityMethod+"_{firstDigit}_{secondDigit}".format(
-        firstDigit=int(beta) % 10,
-        secondDigit=int(beta * 10) % 10
+    testDesc = utilityMethod+"_{serializedDigit}".format(
+        serializedDigit="_".join(serializeDigit(beta, betaDigitPrecision))
     )
     argList = [PYTHON3, "runTest.py",
+                    "--testPeriod", "40000",
                     "--bgClientNum", "0",
-                    "--serviceRate", "3",
+                    "--serviceRate", "4",
                     "--pktDropProb", "0.3",
                     "--channelDelay","100", "150",
                     # "--fillChannel",
@@ -64,12 +76,8 @@ def main():
     startTime = time.time()
     for utilityMethod in utilityMethodList:
         for alpha in alphaList:
-            alphaFirstDigit = int(alpha) % 10
-            alphaSecondDigit = int(alpha*10) % 10
-            alpha_desc = "{firstDigit}_{secondDigit}".format(
-                firstDigit=alphaFirstDigit,
-                secondDigit=alphaSecondDigit
-            )
+            alpha_desc = "_".join(serializeDigit(alpha, alphaDigitPrecision))
+
             resultFolderName = os.path.join(
                 "Results", "case_study_" + utilityMethod+"_alpha_"+alpha_desc)
 
@@ -91,6 +99,12 @@ def main():
                 pool.map(run_test_beta, argList[1:])
                 pool.close()
                 pool.join()
+
+            # save the command to run the plot generation command
+            cmd = " ".join([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
+                        "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])
+            with open(os.path.join(resultFolderName, "summary", "plot_cmd.sh"), 'w') as f:
+                f.write(cmd)
 
             subprocess.run([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
                         "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])

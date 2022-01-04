@@ -7,6 +7,8 @@ from collections import deque
 
 from .utils import Window, MovingAvgEst, AutoRegressEst, RTTEst
 from DLRCP.common import Packet
+import DLRCP.theoreticalAnalysis as theoTool
+
 
 
 
@@ -29,25 +31,32 @@ class BaseTransportLayerProtocol(object):
 
 
     defaultPerfDict = {
-            "distinctPktsRecv": 0,  # of packets received from the application layer
-            "distinctPktsSent": 0,  # pkts transmitted, not necessarily delivered or dropped
-            "deliveredPkts": 0,  # pkts that are confirmed delivered
-            "receivedACK": 0,  # of ACK pkts received (include duplications)
-            "retransAttempts": 0,  # of retranmission attempts
-            "retransProb": 0,
-            "ignorePkts": 0,
+            "distinctPktsRecv": 0,  # # of packets received from the application layer
+            "distinctPktsSent": 0,  # # pkts transmitted, not necessarily delivered or dropped
+            "deliveredPkts": 0,     # # pkts that are confirmed delivered
+            "receivedACK": 0,       # # of ACK pkts received (include duplications)
+            "retransAttempts": 0,   # # of retranmission attempts
+            "retransProb": 0,       # retransmission probability at present
+            "ignorePkts": 0,        # # of ignored pkts
+
             # estimation of the network packet loss (autoregression)
             "pktLossHat": 0,
-            "rttHat": 0,  # estimation of the RTT (autoregression)
+            "rttHat": 0,            # estimation of the RTT (autoregression)
             # estimation of the Retransmission Timeout (autoregression)
             "rto": 0,
-            "avgDelay": 0, # average transmission delay (delivery time - pktGenTime)
+            "avgDelay": 0,          # average transmission delay (delivery time - pktGenTime)
             # estimation of the current delivery rate (autoregression)
             "deliveryRate": 0,
-            "maxWin": 0,  # maximum # of pkts in Tx window so far
-            "loss": 0,  # loss of the decision brain (if applicable)
+            "curWin": 0,            # current pkts in window
+            "maxWin": 0,            # maximum # of pkts in Tx window so far
+            "loss": 0,              # loss of the decision brain (if applicable)
             # when the RL_brain works relatively good (converge) if applicable
             "convergeAt": sys.maxsize,
+
+            "retransSoFar": [],     # # of retransmission attempts in each tick
+            "retransProbSoFar": [], # record the changes of retransProb each tick
+            "ignorePktsSoFar": [],  # record of ignored pkts in each tick
+            "windowSizeSoFar": [],  # record of the # of pkts in Tx buffer in each tick
         }
 
     def parseParamByMode(self, params: dict, requiredKeys: set, optionalKeys: dict, utilityKeys: dict) -> None:
@@ -232,46 +241,66 @@ class BaseTransportLayerProtocol(object):
         return self.RTTEst.getRTO()
 
     """Calculate the protocol performance"""
+    def calcSysUtil_expected(self, chPktLoss, rtt, rto, pktTxMax):
+        if pktTxMax == 0: # if no packet is tranmitted
+            return 0
+        delivery = theoTool.calc_delvy_rate_expect(chPktLoss, pktTxMax)
+        delay = theoTool.calc_delay_expect(chPktLoss, rtt, rto, pktTxMax)
+
+        reward = self.calcUtility(delivery, delay)
+        if reward < 0:
+            print("seen negative reward calcSysUtil_expected", reward, " when ", chPktLoss, rtt, rto, pktTxMax)
+
+        return reward
+
+    def calcPktUtility(self, chPktLoss, rtt, rto, pktTxAttempts):
+        pktDelvy = theoTool.calc_delvy_rate_expect(chPktLoss, pktTxAttempts) # nonono, this means calculate utility
+        # pktDelvy = 1
+        pktDelay = theoTool.calc_delay_expect(chPktLoss, rtt, rto, pktTxAttempts)
+        reward = self.calcUtility(pktDelvy, pktDelay)
+        return reward
 
     def calcUtility(self, delvyRate: float, avgDelay: float) -> float:
         return self.calcUtilityHandler(delvyRate, avgDelay)
 
     def calcUtility_sumPower(self, delvyRate: float, avgDelay: float) -> float:
-        # utility used by ICCCN 2021. A little bit tricky. We changed it to be a general form.
-        """
-        UDP_dlvy, UDP_dly = 0.58306*0.9, 261.415*0.9
-        ARQ_dlvy, ARQ_dly = 0.86000*1.1, 1204.294*1.1
-
-        
-        dlvy = (deliveryRate - UDP_dlvy) / (ARQ_dlvy - UDP_dlvy)
-        q = (avgDelay - UDP_dly) / (ARQ_dly-UDP_dly)
-        r = -beta1*((1-dlvy)**alpha) - beta2*(q**alpha)
+        # utility used by ICCCN 2021. Yes, the normalization function is tricky, 
+        # because it requires you to run UDP and ARQ to acquire the upper and lower bound of delivery and delay. 
+        # This is also the primary motivation of the new version of RCP.
         #"""
-        # sigmoid = lambda x : 1/(1 + np.exp(-x))
+        UDP_dlvy, UDP_dly = 0.587*0.9, 124.562*0.9
+        ARQ_dlvy, ARQ_dly = 0.801*1.1, 1123.189*1.1
         
+        delvyRate = (delvyRate - UDP_dlvy) / (ARQ_dlvy - UDP_dlvy)
+        avgDelay = (avgDelay - UDP_dly) / (ARQ_dly-UDP_dly)
 
         # sum of power
-        r = -self.beta * ((1-delvyRate)**self.alpha) - (1-self.beta) * ((avgDelay/self.timeDivider)**self.alpha)
+        r = -self.beta * ((1-delvyRate)**self.alpha) - (1-self.beta) * ((avgDelay)**self.alpha)
         return r
 
-    def calcBellmanTimeDiscount_sumPower(self, deltaDelay: float) -> float:
-        discount = (1-self.beta) ** (deltaDelay / self.timeDivider) # TODO: not sure.
+    def calcBellmanTimeDiscount_sumPower(self, rtt: float, rttvar: float) -> float:
+        rto = rtt+4*rttvar
+        discount =  (1-self.beta) ** (rto / self.timeDivider)
         return discount
 
     def calcUtility_timeDiscount(self, delvyRate: float, avgDelay: float) -> float:
-        
-        # exponential
         r = (self.beta**(avgDelay / self.timeDivider)) * (delvyRate**self.alpha)
         return r
     
-    def calcBellmanTimeDiscount_timeDiscount(self, deltaDelay: float) -> float:
-        discount = self.beta ** (deltaDelay / self.timeDivider)
-        # print("beta discount {beta} {discount} {approx}".format(beta=self.beta, discount=discount, approx=self.beta**(125*3/100)))
-        # discount = self.beta ** (125*3/self.timeDivider)
+    def calcBellmanTimeDiscount_timeDiscount(self, rtt:float, rttvar: float) -> float:
+        # discount = theoTool.calc_qij_approx_norm(self.beta, rtt, rttvar, 1, self.timeDivider)
+        discount = self.calcUtility(1, rtt+rtt+4*rttvar) / self.calcUtility(1, rtt) # almost the same as the above line, but much simplier
         return discount
         
     def clientSidePerf(self, verbose=False):
         if verbose:
             for key in self.perfDict:
-                print("{key}:{val}".format(key=key, val=self.perfDict[key]))
+                if not isinstance(self.perfDict[key], list):
+                    print("{key}:{val}".format(key=key, val=self.perfDict[key]))
         return self.perfDict
+    
+    def _recordPerfInThisTick(self):
+        self.perfDict["retransSoFar"].append(self.perfDict["retransAttempts"])
+        self.perfDict["retransProbSoFar"].append(self.perfDict["retransProb"])
+        self.perfDict["ignorePktsSoFar"].append(self.perfDict["ignorePkts"])
+        self.perfDict["windowSizeSoFar"].append(self.perfDict["curWin"])

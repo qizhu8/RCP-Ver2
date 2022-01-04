@@ -49,7 +49,7 @@ class DecisionBrain(object):
     def saveModel(self, modelFile):
         """save the current prediction model to a file"""
         raise NotImplementedError
-
+    
     def chooseAction(self, state: np.ndarray, evalOn=False, baseline_Q0=None):
         """
         choose action based on maximum Q with probability 1-epsilon, and random action with probability epsilon
@@ -71,6 +71,8 @@ class DecisionBrain(object):
 
     def decayEpsilon(self):
         """Increase epsilon by shrinking its gap to 1.0 by self.epsilon_decay"""
+        # if self.epsilon > 0.99:
+        #     return
         self.epsilon = 1 - (1-self.epsilon)*self.epsilon_decay
 
     def chooseMaxQAction(self, state) -> int:
@@ -79,6 +81,28 @@ class DecisionBrain(object):
         and take the action that counts for the maximum Q.
         """
         raise NotImplementedError
+    
+    def _getTxAttempts(self, state):
+        return int(state[0])
+    
+    def _getPktDelay(self, state):
+        return int(state[1])
+    
+    def _getRTT(self, state):
+        return float(state[2])
+
+    def _getGamma(self, state):
+        return float(state[3])
+    
+    def _getAvgDelay(self, state):
+        return float(state[4])
+    
+    def _getRTTVar(self, state):
+        return float(state[5])
+
+    def _getRTO(self, state):
+        return float(state[6])
+    
 
     def digestExperience(self, prevState, action, reward, curState) -> None:
         """

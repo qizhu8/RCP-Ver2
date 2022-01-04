@@ -16,12 +16,12 @@ class Packet(object):
     # Packet Type
 
     def __init__(self, pid=0, suid=0, duid=0, genTime=0, txTime=0, pktType=PacketType.MSG):
-        self.pid = pid
-        self.suid = suid
-        self.duid = duid
-        self.genTime = genTime
-        self.txTime = txTime
-        self.pktType = pktType
+        self.pid = int(pid)
+        self.suid = int(suid)
+        self.duid = int(duid)
+        self.genTime = int(genTime)
+        self.txTime = int(txTime)
+        self.pktType = PacketType(pktType)
 
     def __str__(self):
         s = "{suid} -> {duid} pid:{pid} tx@:{txTime} gen@:{genTime} type: {type}".format(
@@ -49,8 +49,8 @@ class PacketInfo(Packet):
         super().__init__(pid=pid, suid=suid, duid=duid,
                          genTime=genTime, txTime=txTime, pktType=pktType)
 
-        self.initTxTime = initTxTime
-        self.txAttempts = txAttempts
+        self.initTxTime = int(initTxTime)
+        self.txAttempts = int(txAttempts)
         self.isFlying = isFlying
         self.RLState = RLState
 

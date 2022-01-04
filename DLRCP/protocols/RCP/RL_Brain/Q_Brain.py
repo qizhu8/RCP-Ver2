@@ -91,15 +91,21 @@ class QTable(object):
     def _extendMoreStates2Hold(self, tgtStates):
         if tgtStates >= self.nStates:
             moreStates = tgtStates - self.nStates + 1
+            additionalRows = np.ones((moreStates, 1)).dot([self.table[-1, :]])
             self.table = np.vstack(
-                [self.table, np.zeros((moreStates, self.nActions))])
+                [self.table, additionalRows])
+            # print("expand states from ", self.nStates, " to ", tgtStates+1)
             self.nStates = tgtStates + 1
+            
 
     def _extendMoreActions2Hold(self, tgtActions):
         if tgtActions >= self.nActions:
             moreActions = tgtActions - self.nActions + 1
+            minvalue = np.min(self.table) # treat it as initial value
+            # minvalue = 0
+
             self.table = np.hstack(
-                [self.table, np.zeros((self.nStates, moreActions))])
+                [self.table, minvalue * np.ones((self.nStates, moreActions))])
             self.nActions = tgtActions + 1
 
     def getQ(self, state, action=None) -> np.ndarray:
@@ -110,13 +116,9 @@ class QTable(object):
         output:
             Q[state, :]: ndarray(nActions, )
         """
-        if state < self.nStates:
-            if action:
-                return self.table[state, action] if action < self.nActions else None
-            else:
-                return self.table[state, :]
-
-        return np.zeros((self.nActions,))
+        if action is not None:
+            return self.table[state, action] if action < self.nActions and state < self.nStates else 0
+        return self.table[state, :] if state < self.nStates else np.zeros((self.nActions,))
 
     def setQ(self, state, action, Qval, setAColumn=False):
         """
@@ -135,6 +137,12 @@ class QTable(object):
                 self.table[state, action] = Qval
             return True
         return False
+    
+    def __str__(self) -> str:
+        msg = ""
+        for state in range(self.nStates):
+            msg += "{state} {q0}\t{q1}\n".format(state=state, q0=self.table[state, 0], q1=self.table[state, 1])
+        return msg
 
     def saveToCSV(self, filename):
         np.savetxt(filename, self.table, delimiter=",", fmt='%f')
@@ -152,7 +160,7 @@ class Q_Brain(DecisionBrain):
                  nActions: int,                 # dimension of the action space
                  epsilon: float = 0.95,         # greedy policy parameter
                  epsilon_decay: float = 0.99,   # the decay of greedy policy parameter, epsilon
-                 eta: float = 0.9,              # reward discount
+                 eta: float = 0.9,              # reward discount # for SMDP, this discount is the Laplace-Stieltjes transform of state transition
                  # method to choose action. e.g. "argmax" or "ThompsonSampling"
                  convergeLossThresh=0.01,
                  updateFrequency: int = 1000,    # period to copying evalNet weights to tgtNet
@@ -181,13 +189,19 @@ class Q_Brain(DecisionBrain):
         self.QTable = QTable(nActions=self.nActions, nStates=2)
 
         self.calcBellmanTimeDiscountHandler = calcBellmanTimeDiscountHandler
-        self.chRTOEst = AutoRegressEst(0.1)
+        # self.chRTOEst = AutoRegressEst(0.1)
+        self.chRTTEst = AutoRegressEst(0.1)
+        self.chRTTVarEst = AutoRegressEst(0.1)
+        self.gamma = 0 # packet loss rate
 
         self.loss = sys.maxsize
+
+        # self.thompsonSampler = ThompsonSampling() # not used 
 
         # for debug
         self.debugOn = True
         self.debugLog = []
+
 
         self.debugLogHead = "prevTxAttemp,prevDelay,prevRTT,prevChPktLoss,prevAvgDelay,prevRTTVar,prevRTO,prevDelvyRate,action,reward,curTxAttemp,curDelay,curRTT,curChPktLoss,curAvgDelay,curRTTVar,curRTO,curDelvyRate"
 
@@ -216,24 +230,16 @@ class Q_Brain(DecisionBrain):
         """Extract only the number of retransmission attempts from a full packet state"""
         return int(state[0])
     
-    def _getRTT(self, state):
-        return float(state[2])
-    
-    def _getRTO(self, state):
-        return float(state[6])
 
     def chooseMaxQAction(self, state, baseline_Q0=None):
-        # state = [txAttempts, delay, RTT, packetLossHat, averageDelay]
+        # state = [txAttempts, delay, RTT, packetLossHat, averageDelay, RTTVar, RTO]
         state = self._parseState(state)
         qVals = self.QTable.getQ(state)
-        if baseline_Q0 is not None:
-            qVals[0] = baseline_Q0
+        # if baseline_Q0 is not None:
+        #     qVals[0] = baseline_Q0 # this operation will change QTable, because this is python, qVals is a pointer
         # method 1 - Pure Q-based method
         action = qVals.argmax()
 
-        # method 2 - Thompson sampling based method
-        # action = ThompsonSampling.randIntFromPMF(
-        #     pmf=qVals, norm=True, map=None)
         return action
 
     def digestExperience(self, prevState, action, reward, curState) -> None:
@@ -245,7 +251,10 @@ class Q_Brain(DecisionBrain):
             record = prevState + [action, reward] + curState
             self.debugLog.append(record)
 
-        self.chRTOEst.update(self._getRTO(curState))
+        # self.chRTOEst.update(self._getRTO(curState))
+        self.chRTTEst.update(self._getRTT(curState))
+        self.chRTTVarEst.update(self._getRTTVar(curState))
+        self.gamma = self._getGamma(curState)
 
         prevState, curState = self._parseState(
             prevState), self._parseState(curState)
@@ -264,31 +273,49 @@ class Q_Brain(DecisionBrain):
         """
         learnReward function is called when the packet reaches the final state (delivered or dropped). 
         """
+        # print("learn: ", prevState, action, reward, newState)
         if self.calcBellmanTimeDiscountHandler is not None:
-            timeDiscount = self.calcBellmanTimeDiscountHandler(self.chRTOEst.getEstVal())
+            timeDiscount = self.calcBellmanTimeDiscountHandler(self.chRTTEst.getEstVal(), self.chRTTVarEst.getEstVal())
         else:
             timeDiscount = 1
 
-        
-        # / timeDiscount
-
-        # prevStateQ_new *= timeDiscount
-        # prevStateQ_new = ((1-self.eta) * nextStateQ_max + reward) / timeDiscount
+        # print("rtt", self.chRTTEst.getEstVal(), "rttvar", self.chRTTVarEst.getEstVal(), "timeDiscount", timeDiscount)
+        # debug use
+        # if prevState == 2 and action == 1:
+        #     print("prev: {prevState} act: {action} reward: {reward} new: {newState}".format(
+        #       prevState=prevState, action=action, reward=reward, newState=newState  
+        #     ))
+       
 
         if action == 0: # we have ignored the packet, no more gain
             # we want to smooth the reward
-            prevStateQ_old = self.QTable.getQ(prevState)[0] 
+            prevStateQ_old = self.QTable.getQ(prevState, action)
             prevStateQ_new = self.eta * prevStateQ_old + (1-self.eta) * reward
             setAColumn = True
+            # setAColumn = False
         else:
-            nextStateQ_max = max(self.QTable.getQ(state=newState))
-            prevStateQ_new = timeDiscount * nextStateQ_max + reward
+            nextAction = np.argmax(self.QTable.getQ(state=newState))
             setAColumn = False
-        
 
-        self.loss = np.abs(self.QTable.getQ(prevState)[action] - prevStateQ_new)
+            """Original Bellman's Equation"""
+            if nextAction == 0: # the only option next time is to drop it, 
+                prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=0) + reward
+            else:
+                prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=0) + reward
 
+            # if nextAction == 0: # the only option next time is to drop it, 
+            #     prevStateQ_new = self.QTable.getQ(state=newState, action=0) + reward / (1-self.gamma)
+            # else:
+            #     prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=1) + reward / (1-self.gamma)
+            # print(prevState, self.gamma, timeDiscount, nextStateQ_max, reward, prevStateQ_new)
+
+        self.loss = np.abs(self.QTable.getQ(prevState, action) - prevStateQ_new)
+
+        # print("update Qtable [{}-{}]({}) -> [{}-{}]({})".format(prevState, action, self.QTable.getQ(prevState, action), prevState, action, prevStateQ_new))
         self.QTable.setQ(prevState, action, prevStateQ_new, setAColumn=setAColumn)
+        
+        # print(self.QTable)
+
         super().learn()
 
     def loadModel(self, modelFile):

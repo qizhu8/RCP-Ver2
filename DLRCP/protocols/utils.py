@@ -309,7 +309,7 @@ class Window(object):
         return pktList
 
     def updatePktInfo_retrans(self, pid: int, curTime: int) -> None:
-        """Decide to retransmit the packet. So update the packet information."""
+        """Decide to retransmit the packet. Update packet txTime and txAttempt += 1."""
         self.buffer[pid].txTime = curTime
         self.buffer[pid].txAttempts += 1
 

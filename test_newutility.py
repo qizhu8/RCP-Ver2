@@ -21,8 +21,8 @@ PYTHON3 = sys.executable  # get the python interpreter
 
 
 # utilityMethodList = ["TimeDiscount", "SumPower"]
-utilityMethodList = ["TimeDiscount"]
-# utilityMethodList = ["SumPower"]
+# utilityMethodList = ["TimeDiscount"]
+utilityMethodList = ["SumPower"]
 alphaList = [2]
 alphaDigitPrecision = 2
 # alphaList = [0.5, 1, 2, 3, 4]
@@ -68,7 +68,8 @@ def run_test_beta(args):
                     # "--addARQFinite",
                     "--addRCPQLearning",
                     # "--addRCPDQN",
-                    "--addRCPRTQ",
+                    # "--addRCPRTQ", # RTQ cannot work with this utility function
+                    "--utilityMethod", "SumPower"
                     ]
     # whether to use multi-processing to run the test of different protocols
     # Appropriate for the first test
@@ -80,9 +81,9 @@ def main():
     for utilityMethod in utilityMethodList:
         for alpha in alphaList:
             alpha_desc = "_".join(serializeDigit(alpha, alphaDigitPrecision))
-
+            
             resultFolderName = os.path.join(
-                "Results", "case_study_competition_" + utilityMethod+"_alpha_"+alpha_desc)
+                "Results", "case_newutility_" + utilityMethod+"_alpha_"+alpha_desc)
 
             tempFileFolderName = os.path.join(resultFolderName, "tempResult")
 
