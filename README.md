@@ -6,10 +6,10 @@ This project is for the Reinforcement Learning based retransmission control prot
 
 * Python3 >= 3.7
 * Python Libraries to run tests:
-    * numpy >= 1.19.0       for numerical calculation and data storage
-    * Pytorch >= 1.7.0      for the DQN implementation
-    * tabulate >= 0.8.0     for displaying final results
-* Python Libraries to see plots
+    * numpy >= 1.19.0               for numerical calculation and data storage
+    * Pytorch >= 1.7.0 (optional)   for the DQN implementation (this method is not included in the paper)
+    * tabulate >= 0.8.0             for displaying final results
+* Python Libraries to plot figure
     * matplotlib
 
 You can easily install all libraries by
@@ -34,7 +34,18 @@ You are expected to see results in the terminal while running and in ```Results/
 
 # Run with customized test
 
+## Reproduce experiment results
+
+```
+# run the experiment 1 code. The plots can be seen in ```Results/case_study_TimeDiscount_alpha_2_0/summary/```
+python3 test_caseStudy.py
+
+# run the experiment 2 code. The plots can be seen in ```Results/case_study_competition_TimeDiscount_alpha_2_0/summary/```
+python3 test_competition.py
+```
+
 ## By feeding different attributes
+
 ```
 # check the possible attributes
 python3 runTest.py --help
@@ -47,6 +58,7 @@ python3 runTest.py --serviceRate 4
 ```
 
 ## By feeding a configuration json file
+
 ```
 python3 runTest.py --configFile your_config.json
 ```
