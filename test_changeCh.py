@@ -19,17 +19,20 @@ if len(sys.argv) >= 2:
 
 PYTHON3 = sys.executable  # get the python interpreter
 
-
-# utilityMethodList = ["TimeDiscount", "SumPower"]
+experimentDesc = "dynamic_channel"
 utilityMethodList = ["TimeDiscount"]
-# utilityMethodList = ["SumPower"]
 alphaList = [2]
 alphaDigitPrecision = 2
-# alphaList = [0.5, 1, 2, 3, 4]
 betaList = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-betaDigitPrecision = 3 # number of digits to represent beta
 # betaList = [0.8]
-# betaList = [0.9, 1]
+betaDigitPrecision = 3 # number of digits to represent beta
+testPeriod = 40000
+
+channelInstructionList = [
+    [0, "serviceRate", 7],
+    [10000, "serviceRate", 1],
+]
+
 
 def serializeDigit(num, digitPrec):
     """
@@ -42,6 +45,18 @@ def serializeDigit(num, digitPrec):
         num *= 10
     return s
 
+def formulateChInstructions(chInstructList):
+    """
+    insList = ['10', 'serviceRate', '3', '20', 'channelDelay', '100,200', '30', 'channelDelay', '100','nonsense']
+    """
+    insList = []
+    for ins in chInstructList:
+        t, attrib, value = ins
+        insList.append(str(int(t)))
+        insList.append(str(attrib))
+        insList.append(str(value))
+    return " ".join(insList)
+
 
 def run_test_beta(args):
     beta, alpha, utilityMethod, resultFolderName, tempFileFolderName = args
@@ -50,7 +65,7 @@ def run_test_beta(args):
         serializedDigit="_".join(serializeDigit(beta, betaDigitPrecision))
     )
     argList = [PYTHON3, "runTest.py",
-                    "--testPeriod", "40000",
+                    "--testPeriod", str(int(testPeriod)),
                     "--bgClientNum", "3",
                     "--serviceRate", "3",
                     "--pktDropProb", "0.3",
@@ -69,6 +84,7 @@ def run_test_beta(args):
                     "--addRCPQLearning",
                     # "--addRCPDQN",
                     "--addRCPRTQ",
+                    "--channelInstruct", formulateChInstructions(channelInstructionList)
                     ]
     # whether to use multi-processing to run the test of different protocols
     # Appropriate for the first test
@@ -82,7 +98,7 @@ def main():
             alpha_desc = "_".join(serializeDigit(alpha, alphaDigitPrecision))
 
             resultFolderName = os.path.join(
-                "Results", "case_study_competition_" + utilityMethod+"_alpha_"+alpha_desc)
+                "Results", experimentDesc + "_" + utilityMethod + "_alpha_"+alpha_desc)
 
             tempFileFolderName = os.path.join(resultFolderName, "tempResult")
 

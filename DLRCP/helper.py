@@ -43,7 +43,7 @@ def get_opts():
                         help='a list of delay used by the selected channel. If RandomDelayChannel, a list of the min&max of the random number. If ConstDelayChannel, one integer is needed')
     parser.add_argument('--fillChannel', dest='fillChannel', default=False,
                         action='store_true', help="whether to fill the channel with environment packets")
-    parser.add_argument('--channelInstruct', dest='chInsList', default=[],
+    parser.add_argument('--channelInstruct', dest='chInsList', default="",
                         help="scheduled instructions for the channel to execute. E.g. 200 serviceRate 3 400 channelDelay 120,140 ")
 
     # environment setting
@@ -185,7 +185,7 @@ def genChannel(opts):
             bufferSize=opts.bufferSize,
             delay=opts.channelDelay[0],
             pktDropProb=opts.pktDropProb,
-            insList=opts.insList,
+            insList=opts.chInsList,
             loglevel=logging.INFO)
 
     return channel

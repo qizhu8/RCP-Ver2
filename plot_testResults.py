@@ -6,6 +6,7 @@ import sys
 import json
 import numpy as np
 import pandas as pd
+import pickle as pkl
 import argparse
 import matplotlib.pyplot as plt
 
@@ -17,15 +18,15 @@ protocolName = {
     'UDP': 'UDP',
     'ARQ_inf_wind': 'ARQ',
     'ARQ_finit_wind': 'ARQ finit window',
-    'TCP': 'TCP',
+    'TCP_NewReno': 'TCP-NewReno',
     'RCPQ_Learning': 'RTQ',
-    'RCPRTQ': 'optimal-RCP' 
+    'RCPRTQ': 'Heuristic-RC' 
 }
 protocolColor = {
     'UDP': 'blue',
     'ARQ_inf_wind': 'orange',
     'ARQ_finit_wind': 'yellow',
-    'TCP': 'black',
+    'TCP_NewReno': 'black',
     'RCPQ_Learning': 'green',
     'RCPRTQ': 'red' 
 }
@@ -35,22 +36,30 @@ protocolPlotLast25 = {
     'RCPQ_Learning': 'RTQ',
 }
 
-attributeNameDict = {
-        "protocol": "ptcl",
-        "generated packets": "pkts gen",
-        "sent packets": "pkts sent",
-        "packets delivered": "pkts dlvy",
-        "delivery percentage": "dlvy perc",
-        "average delay": "avg dly",
-        "system utility": "sys util",
-        "packets delivered (last 25%)": "l25p dlvy",
-        "delivery percentage (last 25%)": "l25p dlvy perc",
-        "average delay (last 25%)": "l25p dly",
-        "system utility (last 25%)": "l25p util",
-        "loss": "loss"
+# attributes that can be read from the performance briefing (perfBrief.csv)
+attributeNameDict_csv = {
+    "protocol": "ptcl",
+    "generated packets": "pkts gen",
+    "sent packets": "pkts sent",
+    "packets delivered": "pkts dlvy",
+    "delivery percentage": "dlvy perc",
+    "average delay": "avg dly",
+    "system utility": "sys util",
+    "packets delivered (last 25%)": "l25p dlvy",
+    "delivery percentage (last 25%)": "l25p dlvy perc",
+    "average delay (last 25%)": "l25p dly",
+    "system utility (last 25%)": "l25p util",
+    "loss": "loss"
 }
 
-def plot_one_attribute(testPerfDicts, attributeName, configAttributeName, attributeNameDict, resultFolder):
+# attributes that can be read from pkl files
+attributeNameDict_pkl = {
+    "retransProb": "Retransmission Probability"
+}
+
+
+def plot_one_attribute_csv(testPerfDicts, attributeName, configAttributeName, attributeNameDict, resultFolder):
+    # plot one attribute that is read from the performance briefing
     columnName = attributeNameDict[attributeName]
     l25columnName = None
     if attributeName + " (last 25%)" in attributeNameDict:
@@ -89,7 +98,8 @@ def plot_one_attribute(testPerfDicts, attributeName, configAttributeName, attrib
     
     """We also want to plot the last 25% time performance of RTQ"""
     
-    plt.xlabel(configAttributeName)
+    # plt.xlabel(configAttributeName)
+    plt.xlabel("$\eta$")
     plt.ylabel(attributeName)
     plt.legend()
     plt.savefig(imgPath)
@@ -98,7 +108,7 @@ def plot_one_attribute(testPerfDicts, attributeName, configAttributeName, attrib
     return protocols, protocolPerf
 
 
-def process_one_attribute(resultFolder, subFolderPrefix, configAttributeName, attributeName):
+def process_one_attribute_csv(resultFolder, subFolderPrefix, configAttributeName, attributeName):
     # map sementic name to column name in csv file
 
     # scan folder and load the "perfBrief.csv" in each subfolder
@@ -121,9 +131,117 @@ def process_one_attribute(resultFolder, subFolderPrefix, configAttributeName, at
         # key = str(firstDigit)+str(secondDigit)
         key = configDict[configAttributeName]
 
-        testPerfDicts[key] = [configDict[configAttributeName], pd.read_csv(csvFileName, delimiter=',')]
+        testPerfDicts[key] = [key, pd.read_csv(csvFileName, delimiter=',')]
     
-    plot_one_attribute(testPerfDicts, attributeName, configAttributeName, attributeNameDict, resultFolder)
+    plot_one_attribute_csv(testPerfDicts, attributeName, configAttributeName, attributeNameDict_csv, resultFolder)
+
+
+def interpretPklData(data):
+    perfRecord = np.asarray(data["perfRecords"])
+    svrPerfDf = pd.DataFrame({
+        "time": perfRecord[:, 0],
+        "delivered pkt since before": perfRecord[:, 1],
+        "pkt delivery rate": perfRecord[:, 2],
+        "avg delay": perfRecord[:, 3],
+        "utility": perfRecord[:, 4]
+        })
+    
+    svrPktID, svrPktDelvyRate, svrAvgDelay = data["serverSidePerf"]
+
+    cltPerfDf = pd.DataFrame({
+        "retransSoFar": data["clientSidePerf"]["retransSoFar"], 
+        "retransProb": data["clientSidePerf"]["retransProbSoFar"], 
+        "ignorePktsSoFar": data["clientSidePerf"]["ignorePktsSoFar"], 
+        })
+    
+    return {
+        "serverPerfDf": svrPerfDf,
+        "clientPerfDf": cltPerfDf,
+        "perfRecord": perfRecord
+    }
+
+def process_one_attribute_pkl(resultFolder, subFolderPrefix, configAttributeName, attributeName):
+    # scan folder and load the "perfBrief.csv" in each subfolder
+    subFolders = os.listdir(resultFolder)
+    subFolders = filter(lambda s: s.startswith(subFolderPrefix), subFolders)
+    subFolders = map(lambda s: os.path.join(resultFolder, s), subFolders)
+    subFolders = filter(os.path.isdir, subFolders)  # filter only directories
+
+    # get the "perfBrief.csv" from each subfolder
+    testPerfDicts = {}
+    for subfolder in subFolders:
+        jsonFileName = os.path.join(subfolder, 'test_config.json')
+        RCPQ_Learning_perf = os.path.join(subfolder, 'RCPQ_Learning_perf.pkl')
+        RCPRTQ_perf = os.path.join(subfolder, 'RCPRTQ_perf.pkl')
+        
+        with open(jsonFileName, "r") as fp:
+            configDict = json.load(fp)
+
+        key = configDict[configAttributeName]
+        testPerfDicts[key] = [key, None, None]
+
+        if os.path.isfile(RCPQ_Learning_perf):
+            with open(RCPQ_Learning_perf, 'rb') as f:
+                testPerfDicts[key][1] = interpretPklData(pkl.load(f))
+        
+        if os.path.isfile(RCPRTQ_perf):
+            with open(RCPRTQ_perf, 'rb') as f:
+                testPerfDicts[key][2] = interpretPklData(pkl.load(f))
+    plot_one_attribute_pkl(resultFolder, testPerfDicts, configAttributeName, attributeName)
+
+def plot_one_attribute_pkl(resultFolder, testPerfDicts, configAttributeName, attributeName):
+    perfVsConfigPermData = {}
+
+    configAttributeValues = []
+    RCPQ_Learning_data = []
+    RCPRTQ_data = []
+    for key in testPerfDicts:
+        if testPerfDicts[key][0] is not None:
+            configAttributeValues.append(testPerfDicts[key][0])
+
+        if testPerfDicts[key][1] is not None:
+            data = testPerfDicts[key][1]["clientPerfDf"][attributeName].iloc[-1]
+            RCPQ_Learning_data.append(data)
+
+        if testPerfDicts[key][2] is not None:
+            data = testPerfDicts[key][2]["clientPerfDf"][attributeName].iloc[-1]
+            RCPRTQ_data.append(data)
+    
+    if len(configAttributeValues):
+        perfVsConfigPermData[configAttributeName] = configAttributeValues
+
+    if len(RCPQ_Learning_data):
+        perfVsConfigPermData["RCPQ_Learning"] = RCPQ_Learning_data
+    
+    if len(RCPRTQ_data):
+        perfVsConfigPermData["RCPRTQ"] = RCPRTQ_data
+
+    perfVsConfigPermDf = pd.DataFrame(data=perfVsConfigPermData)
+    perfVsConfigPermDf.sort_values(configAttributeName, inplace=True)
+
+    perfVsConfigPermDf.set_index(configAttributeName, inplace=True)
+
+    # for plotting
+    plt.clf()
+    imgDir = os.path.join(resultFolder, "summary")
+    os.makedirs(imgDir, exist_ok=True)
+    imgPath = os.path.join(imgDir, attributeName + "_" + configAttributeName + ".png")
+
+    timeDiscountList = perfVsConfigPermDf.index
+    for protocolId, protocol in enumerate(perfVsConfigPermDf.columns):
+        plt.plot(timeDiscountList, perfVsConfigPermDf[protocol], '-o', color=protocolColor[protocol], label=protocolName[protocol],)
+        
+    
+    """We also want to plot the last 25% time performance of RTQ"""
+    
+    # plt.xlabel(configAttributeName)
+    plt.xlabel("$\eta$")
+    plt.ylabel(attributeName)
+    plt.legend()
+    plt.savefig(imgPath)
+    # plt.show()
+    print("Generating", imgPath)
+
 
 def gather_Q_table(resultFolder, subFolderPrefix, configAttributeName):
     # scan folder and load the "QTable.txt" in each subfolder
@@ -226,8 +344,12 @@ if __name__ == "__main__":
 
     opts = parser.parse_args()
 
-    attributeNameList=attributeNameDict.keys()
-    for attributeName in attributeNameList:
-        process_one_attribute(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName, attributeName)
+    for attributeName in attributeNameDict_csv:
+        process_one_attribute_csv(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName, attributeName)
+    
+    # plot attributes that are in the pkl file
+    for attributeName in attributeNameDict_pkl:
+        process_one_attribute_pkl(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName, attributeName)
+
     
     gather_Q_table(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName)

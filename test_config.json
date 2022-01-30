@@ -15,7 +15,7 @@
     "chInsList": [],
     "bgClientNum": 0,
     "bgClientPktRate": 1,
-    "utilityMethod": "TimeDiscount",
+    "utilityMethod": "SumPower",
     "timeDivider": 100,
     "alpha": 2.0,
     "beta": 0.6,

@@ -53,7 +53,7 @@ class BaseChannel(object):
         assert _val >= 0 and _val <= 1, _desc+" must be an integer > 0"
         return _val
 
-    def __init__(self, serviceRate: int = 1, bufferSize: int = 0, pktDropProb: float = 0, insList=[], loglevel: int = LOGLEVEL):
+    def __init__(self, serviceRate: int = 1, bufferSize: int = 0, pktDropProb: float = 0, insList="", loglevel: int = LOGLEVEL):
         self.serviceRate = BaseChannel.checkPosInt(serviceRate, "serviceRate")
         self.bufferSize = BaseChannel.parseQueueSize(bufferSize)
         self.pktDropProb = BaseChannel.checkProb(pktDropProb, "pktDropProb")
@@ -63,7 +63,8 @@ class BaseChannel(object):
         self.channelBuffer = None
 
         # a scheduler that specify the changes and the trigger time.
-        self.scheduler = Scheduler(insList)
+        self.scheduler = Scheduler()
+        self.scheduler.addInstructionList(insList.split())
 
     def initBuffer(self):
         self.time = 0
@@ -103,17 +104,19 @@ class BaseChannel(object):
         self.time += 1
         self.followScheduler()
 
-    # not called. Saved for future use
-    def initScheduler(self, insList):
-        self.scheduler.addInstructionList(insList)
-
     def followScheduler(self):
+        """
+        Execute schedule instructions if it's the correct time.
+        """
         insList = self.scheduler.getInstruction(self.time)
         for ins in insList:
             attributeName, value = ins.attributeName, ins.value
             if hasattr(self, attributeName):
                 setattr(self, attributeName, value)
-                self.logger.info("change "+attributeName +
+                # self.logger.info("change "+attributeName +
+                                #  " to "+value.__str__())
+                """debug"""
+                self.logger.warning("@"+str(self.time)+" change "+attributeName +
                                  " to "+value.__str__())
 
     def __str__(self):
@@ -174,15 +177,13 @@ class ConstDelayChannel(BaseChannel):
         nPktAccpt = 0
         nPktFullBufDrop = 0
         availProsPower = self.serviceRate  # number of packets still can be processed
-        while availProsPower:
-            for pkt in pktList:
-                if self.ifKeepPkt():
-                    if self.channelBuffer.enqueue(pkt, self.time):
-                        nPktAccpt += 1
-                        availProsPower -= 1
-                    else:
-                        nPktFullBufDrop += 1
-            break
+        for pkt in pktList:
+            if availProsPower > 0 and self.ifKeepPkt():
+                if self.channelBuffer.enqueue(pkt, self.time):
+                    nPktAccpt += 1
+                    availProsPower -= 1
+                else:
+                    nPktFullBufDrop += 1
 
         nPktDrop = len(pktList) - nPktAccpt - nPktFullBufDrop
         self.logger.debug("[+] @{time} Channel: accept {nPktAccpt}, drop {nPktDrop}".format(
@@ -228,21 +229,24 @@ class RandomDelayChannel(BaseChannel):
         nPktAccpt = 0
         nPktFullBufDrop = 0
         availProsPower = self.serviceRate  # number of packets still can be processed
-        while availProsPower:
-            for pkt in pktList:
-                if self.ifKeepPkt():
-                    if self.channelBuffer.enqueue(pkt, self.time):
-                        nPktAccpt += 1
-                        availProsPower -= 1
-                    else:
-                        nPktFullBufDrop += 1
-            break
+        for pkt in pktList:
+            if availProsPower > 0 and self.ifKeepPkt():
+                if self.channelBuffer.enqueue(pkt, self.time):
+                    nPktAccpt += 1
+                    availProsPower -= 1
+                else:
+                    nPktFullBufDrop += 1
 
         nPktDrop = len(pktList) - nPktAccpt - nPktFullBufDrop
         self.logger.debug("[+] @{time} Channel: accept {nPktAccpt}, drop {nPktDrop}".format(
             time=self.time, nPktAccpt=nPktAccpt, nPktDrop=nPktDrop+nPktFullBufDrop))
         self.logger.debug("[-] @{time} Channel: {nPktFullBufDrop} pkts dropped due to full buffer".format(
             time=self.time, nPktFullBufDrop=nPktFullBufDrop))
+        
+
+        # self.logger.warning("@"+str(self.time)+"service rate" + str(self.serviceRate)+" "+str(nPktAccpt))
+        # self.logger.warning("[+] @{time} Channel: accept {nPktAccpt}, drop {nPktDrop}".format(
+        #     time=self.time, nPktAccpt=nPktAccpt, nPktDrop=nPktDrop+nPktFullBufDrop))
 
     def getPkts(self):
         return super().getPkts()
@@ -258,7 +262,7 @@ if __name__ == "__main__":
 
     print(channel)
 
-    random.seed(1)
+    random.seed(42)
     # generate 20 packets from client 0 -> server 1
     pktList1, pktList2 = [], []
     for pid in range(10):

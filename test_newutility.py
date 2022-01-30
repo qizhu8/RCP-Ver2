@@ -98,13 +98,21 @@ def main():
             # use multiprocessing to generate the remaining test results
             n_worker = multiprocessing.cpu_count()
             needed_worker = min(n_worker-1, len(argList[1:]))
-            pool = multiprocessing.Pool(processes=needed_worker)
-            pool.map(run_test_beta, argList[1:])
-            pool.close()
-            pool.join()
+            if needed_worker:
+                pool = multiprocessing.Pool(processes=needed_worker)
+                pool.map(run_test_beta, argList[1:])
+                pool.close()
+                pool.join()
 
             subprocess.run([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
                         "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])
+            
+            # save the command to run the plot generation command
+            cmd = " ".join([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
+                        "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])
+            with open(os.path.join(resultFolderName, "summary", "plot_cmd.sh"), 'w') as f:
+                f.write(cmd)
+
     endTime = time.time()
     print("running all simulations in ", endTime-startTime, " seconds")
 if __name__ == "__main__":

@@ -254,8 +254,8 @@ class BaseTransportLayerProtocol(object):
         return reward
 
     def calcPktUtility(self, chPktLoss, rtt, rto, pktTxAttempts):
-        pktDelvy = theoTool.calc_delvy_rate_expect(chPktLoss, pktTxAttempts) # nonono, this means calculate utility
-        # pktDelvy = 1
+        # pktDelvy = theoTool.calc_delvy_rate_expect(chPktLoss, pktTxAttempts) # nonono, this means calculate utility
+        pktDelvy = 1
         pktDelay = theoTool.calc_delay_expect(chPktLoss, rtt, rto, pktTxAttempts)
         reward = self.calcUtility(pktDelvy, pktDelay)
         return reward
@@ -268,8 +268,8 @@ class BaseTransportLayerProtocol(object):
         # because it requires you to run UDP and ARQ to acquire the upper and lower bound of delivery and delay. 
         # This is also the primary motivation of the new version of RCP.
         #"""
-        UDP_dlvy, UDP_dly = 0.587*0.9, 124.562*0.9
-        ARQ_dlvy, ARQ_dly = 0.801*1.1, 1123.189*1.1
+        UDP_dlvy, UDP_dly = 0.591*0.9, 124.562*0.9
+        ARQ_dlvy, ARQ_dly = 0.734*1.1, 626.128*1.1
         
         delvyRate = (delvyRate - UDP_dlvy) / (ARQ_dlvy - UDP_dlvy)
         avgDelay = (avgDelay - UDP_dly) / (ARQ_dly-UDP_dly)
