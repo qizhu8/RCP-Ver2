@@ -279,7 +279,6 @@ class Q_Brain(DecisionBrain):
         else:
             timeDiscount = 1
 
-        # print("rtt", self.chRTTEst.getEstVal(), "rttvar", self.chRTTVarEst.getEstVal(), "timeDiscount", timeDiscount)
         # debug use
         # if prevState == 2 and action == 1:
         #     print("prev: {prevState} act: {action} reward: {reward} new: {newState}".format(
@@ -297,16 +296,17 @@ class Q_Brain(DecisionBrain):
             nextAction = np.argmax(self.QTable.getQ(state=newState))
             setAColumn = False
 
-            """Original Bellman's Equation"""
-            if nextAction == 0: # the only option next time is to drop it, 
-                prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=0) + reward
-            else:
-                prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=0) + reward
-
+            # """Original Bellman's Equation"""
             # if nextAction == 0: # the only option next time is to drop it, 
-            #     prevStateQ_new = self.QTable.getQ(state=newState, action=0) + reward / (1-self.gamma)
+            #     prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=0) + reward
             # else:
-            #     prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=1) + reward / (1-self.gamma)
+            #     prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=0) + reward
+
+            if nextAction == 0: # the only option next time is to drop it, 
+                prevStateQ_new = self.QTable.getQ(state=newState, action=0) + reward / (1-self.gamma)
+            else:
+                prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=1) + reward / (1-self.gamma)
+            
             # print(prevState, self.gamma, timeDiscount, nextStateQ_max, reward, prevStateQ_new)
 
         self.loss = np.abs(self.QTable.getQ(prevState, action) - prevStateQ_new)

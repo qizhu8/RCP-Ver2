@@ -276,11 +276,13 @@ class BaseTransportLayerProtocol(object):
 
         # sum of power
         r = -self.beta * ((1-delvyRate)**self.alpha) - (1-self.beta) * ((avgDelay)**self.alpha)
+        r -= -1 # -1 is the minimum
         return r
 
     def calcBellmanTimeDiscount_sumPower(self, rtt: float, rttvar: float) -> float:
-        rto = rtt+4*rttvar
-        discount =  (1-self.beta) ** (rto / self.timeDivider)
+        # rto = rtt+4*rttvar
+        # discount =  (1-self.beta) ** (rto / self.timeDivider)
+        discount = self.calcUtility(1, rtt+rtt+4*rttvar) / self.calcUtility(1, rtt) # almost the same as the above line, but much simplier
         return discount
 
     def calcUtility_timeDiscount(self, delvyRate: float, avgDelay: float) -> float:
