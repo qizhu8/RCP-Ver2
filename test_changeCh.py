@@ -66,7 +66,7 @@ def run_test_beta(args):
     )
     argList = [PYTHON3, "runTest.py",
                     "--testPeriod", str(int(testPeriod)),
-                    "--bgClientNum", "3",
+                    "--bgClientNum", "0",
                     "--serviceRate", "3",
                     "--pktDropProb", "0.3",
                     "--channelDelay","100", "150",

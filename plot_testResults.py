@@ -49,11 +49,16 @@ attributeNameDict_csv = {
     "delivery percentage (last 25%)": "l25p dlvy perc",
     "average delay (last 25%)": "l25p dly",
     "system utility (last 25%)": "l25p util",
-    "loss": "loss"
+    "loss": "loss",
 }
 
 # attributes that can be read from pkl files
 attributeNameDict_pkl = {
+    "retransProb": "Retransmission Probability"
+}
+
+# attributes that will be plot over simulation time per experiment
+attributeNameDict_time = {
     "retransProb": "Retransmission Probability"
 }
 
@@ -88,7 +93,7 @@ def plot_one_attribute_csv(testPerfDicts, attributeName, configAttributeName, at
     plt.clf()
     imgDir = os.path.join(resultFolder, "summary")
     os.makedirs(imgDir, exist_ok=True)
-    imgPath = os.path.join(imgDir, attributeName + "_" + configAttributeName + ".png")
+    imgPath = os.path.join(imgDir, attributeName + "_" + configAttributeName + ".pdf")
 
     timeDiscountList = [testPerfDicts[x][0] for x in orderedKey]
     for protocolId, protocol in enumerate(protocols):
@@ -195,7 +200,7 @@ def plot_one_attribute_pkl(resultFolder, testPerfDicts, configAttributeName, att
     configAttributeValues = []
     RCPQ_Learning_data = []
     RCPRTQ_data = []
-    for key in testPerfDicts:
+    for key in testPerfDicts: # "key" can be think as beta
         if testPerfDicts[key][0] is not None:
             configAttributeValues.append(testPerfDicts[key][0])
 
@@ -225,7 +230,7 @@ def plot_one_attribute_pkl(resultFolder, testPerfDicts, configAttributeName, att
     plt.clf()
     imgDir = os.path.join(resultFolder, "summary")
     os.makedirs(imgDir, exist_ok=True)
-    imgPath = os.path.join(imgDir, attributeName + "_" + configAttributeName + ".png")
+    imgPath = os.path.join(imgDir, attributeName + "_" + configAttributeName + ".pdf")
 
     timeDiscountList = perfVsConfigPermDf.index
     for protocolId, protocol in enumerate(perfVsConfigPermDf.columns):
@@ -326,6 +331,94 @@ def gather_Q_table(resultFolder, subFolderPrefix, configAttributeName):
         np.savetxt(os.path.join(saveDir, "Q_learning_s.txt"), sList, fmt="%d", delimiter=",", header=header, comments="")
 
 
+def process_one_attribute_time(resultFolder, subFolderPrefix, configAttributeName, attributeName):
+    # scan folder and load the "perfBrief.csv" in each subfolder
+    subFolders = os.listdir(resultFolder)
+    subFolders = filter(lambda s: s.startswith(subFolderPrefix), subFolders)
+    subFolders = map(lambda s: os.path.join(resultFolder, s), subFolders)
+    subFolders = filter(os.path.isdir, subFolders)  # filter only directories
+
+    # get the "perfBrief.csv" from each subfolder
+    testPerfDicts = {}
+    for subfolder in subFolders:
+        jsonFileName = os.path.join(subfolder, 'test_config.json')
+        RCPQ_Learning_perf = os.path.join(subfolder, 'RCPQ_Learning_perf.pkl')
+        RCPRTQ_perf = os.path.join(subfolder, 'RCPRTQ_perf.pkl')
+        
+        with open(jsonFileName, "r") as fp:
+            configDict = json.load(fp)
+
+        key = configDict[configAttributeName]
+        testPerfDicts[key] = [key, None, None, subfolder]
+
+        if os.path.isfile(RCPQ_Learning_perf):
+            with open(RCPQ_Learning_perf, 'rb') as f:
+                testPerfDicts[key][1] = interpretPklData(pkl.load(f))
+        
+        if os.path.isfile(RCPRTQ_perf):
+            with open(RCPRTQ_perf, 'rb') as f:
+                testPerfDicts[key][2] = interpretPklData(pkl.load(f))
+    plot_one_experiment_perf_time(resultFolder, testPerfDicts, configAttributeName, attributeName)
+
+
+def plot_one_experiment_perf_time(resultFolder, testPerfDicts, configAttributeName, attributeName):
+    perfVsConfigPermData = {}
+
+    configAttributeValues = []
+    
+    for key in testPerfDicts: # "key" can be think as beta
+        RCPQ_Learning_data = []
+        RCPRTQ_data = []
+
+        if testPerfDicts[key][0] is not None:
+            configAttributeValues.append(testPerfDicts[key][0])
+
+        if testPerfDicts[key][1] is not None:
+            RCPQ_Learning_data = testPerfDicts[key][1]["clientPerfDf"][attributeName]
+            
+
+        if testPerfDicts[key][2] is not None:
+            RCPRTQ_data = testPerfDicts[key][2]["clientPerfDf"][attributeName]
+            
+        if testPerfDicts[key][3] is not None:
+
+            # RCP + Q Learning
+            plt.clf()
+            imgPath = os.path.join(testPerfDicts[key][3], attributeName + "_" + protocolName["RCPQ_Learning"] +"_overtime" + ".pdf")
+            plt.plot(list(range(len(RCPQ_Learning_data))), RCPQ_Learning_data, '-', color=protocolColor["RCPQ_Learning"], label=protocolName["RCPQ_Learning"],)
+            # plt.xlabel(configAttributeName)
+            plt.xlabel("time")
+            plt.ylabel(attributeNameDict_pkl[attributeName])
+            plt.legend()
+            plt.savefig(imgPath)
+            # plt.show()
+            print("Generating", imgPath)
+
+            # RCP Heuristic
+            plt.clf()
+            imgPath = os.path.join(testPerfDicts[key][3], attributeName + "_" + protocolName["RCPRTQ"] +"_overtime" + ".pdf")
+            plt.plot(list(range(len(RCPRTQ_data))), RCPRTQ_data, '-', color=protocolColor["RCPRTQ"], label=protocolName["RCPRTQ"],)
+            # plt.xlabel(configAttributeName)
+            plt.xlabel("time")
+            plt.ylabel(attributeNameDict_pkl[attributeName])
+            plt.legend()
+            plt.savefig(imgPath)
+            # plt.show()
+            print("Generating", imgPath)
+
+
+            plt.clf()
+            imgPath = os.path.join(testPerfDicts[key][3], attributeName + "_overtime" + ".pdf")
+            plt.plot(list(range(len(RCPQ_Learning_data))), RCPQ_Learning_data, '-', color=protocolColor["RCPQ_Learning"], label=protocolName["RCPQ_Learning"],)
+            plt.plot(list(range(len(RCPRTQ_data))), RCPRTQ_data, '-', color=protocolColor["RCPRTQ"], label=protocolName["RCPRTQ"],)
+            # plt.xlabel(configAttributeName)
+            plt.xlabel("time")
+            plt.ylabel(attributeNameDict_pkl[attributeName])
+            plt.legend()
+            plt.savefig(imgPath)
+            # plt.show()
+            print("Generating", imgPath)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='RCP-Ver 2.0 - plot for time discount')
     # parser.add_argument('--resultFolder', type=str, default= 'Results/case_study_TimeDiscount_alpha_2_0', required=False,
@@ -342,6 +435,7 @@ if __name__ == "__main__":
     parser.add_argument('--configAttributeName', type=str, default= 'beta',
                         help='the attribute name that changes among the experimetns')
 
+
     opts = parser.parse_args()
 
     for attributeName in attributeNameDict_csv:
@@ -351,5 +445,8 @@ if __name__ == "__main__":
     for attributeName in attributeNameDict_pkl:
         process_one_attribute_pkl(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName, attributeName)
 
-    
+    for attributeName in attributeNameDict_time:
+        process_one_attribute_time(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName, attributeName)
+
+
     gather_Q_table(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName)

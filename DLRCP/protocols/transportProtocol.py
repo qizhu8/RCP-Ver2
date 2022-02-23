@@ -53,10 +53,10 @@ class BaseTransportLayerProtocol(object):
             # when the RL_brain works relatively good (converge) if applicable
             "convergeAt": sys.maxsize,
 
-            "retransSoFar": [],     # # of retransmission attempts in each tick
-            "retransProbSoFar": [], # record the changes of retransProb each tick
-            "ignorePktsSoFar": [],  # record of ignored pkts in each tick
-            "windowSizeSoFar": [],  # record of the # of pkts in Tx buffer in each tick
+            "retransSoFar": list(),     # # of retransmission attempts in each tick
+            "retransProbSoFar": list(), # record the changes of retransProb each tick
+            "ignorePktsSoFar": list(),  # record of ignored pkts in each tick
+            "windowSizeSoFar": list(),  # record of the # of pkts in Tx buffer in each tick
         }
 
     def parseParamByMode(self, params: dict, requiredKeys: set, optionalKeys: dict, utilityKeys: dict) -> None:
@@ -159,7 +159,11 @@ class BaseTransportLayerProtocol(object):
     def initPerfDict(self):
         """initialize perfDict to default values"""
         for key, val in BaseTransportLayerProtocol.defaultPerfDict.items():
-            self.perfDict[key] = val
+
+            if isinstance(val, (int, float, bool, str)): # primitive data
+                self.perfDict[key] = val 
+            else:
+                self.perfDict[key] = val.copy()
 
     def initLogger(self, loglevel: int, create_file: bool=False) -> None:
         """This function is implemented in multiple base classes. """
@@ -279,19 +283,19 @@ class BaseTransportLayerProtocol(object):
         r -= -1 # -1 is the minimum
         return r
 
-    def calcBellmanTimeDiscount_sumPower(self, rtt: float, rttvar: float) -> float:
-        # rto = rtt+4*rttvar
-        # discount =  (1-self.beta) ** (rto / self.timeDivider)
-        discount = self.calcUtility(1, rtt+rtt+4*rttvar) / self.calcUtility(1, rtt) # almost the same as the above line, but much simplier
+    def calcBellmanTimeDiscount_sumPower(self, rtt: float, rttvar: float, state: int) -> float:
+        rto = rtt+4*rttvar
+        discount = self.calcUtility(1, (state)*rto + rtt) / self.calcUtility(1, (state)*rto) # an approximation
         return discount
 
     def calcUtility_timeDiscount(self, delvyRate: float, avgDelay: float) -> float:
         r = (self.beta**(avgDelay / self.timeDivider)) * (delvyRate**self.alpha)
         return r
     
-    def calcBellmanTimeDiscount_timeDiscount(self, rtt:float, rttvar: float) -> float:
+    def calcBellmanTimeDiscount_timeDiscount(self, rtt:float, rttvar: float, state: int) -> float:
+        rto = rtt+4*rttvar
         # discount = theoTool.calc_qij_approx_norm(self.beta, rtt, rttvar, 1, self.timeDivider)
-        discount = self.calcUtility(1, rtt+rtt+4*rttvar) / self.calcUtility(1, rtt) # almost the same as the above line, but much simplier
+        discount = self.calcUtility(1, (state)*rto + rtt) / self.calcUtility(1, (state)*rto) # almost the same as the above line, but much simplier
         return discount
         
     def clientSidePerf(self, verbose=False):

@@ -22,7 +22,7 @@ class RCP(BaseTransportLayerProtocol):
         "memoryCapacity": 1e5,      #
         "updateFrequency": 100,     # period to replace target network with evaluation
         "gamma": 0.9,               # reward discount
-        "epsilon": 0.9,             # greedy policy parameter
+        "epsilon": 0.7,             # greedy policy parameter
         "epsilon_decay": 0.7,
         "convergeLossThresh": 0.01,  # below which we consider the network as converged
         "learnRetransmissionOnly": False,

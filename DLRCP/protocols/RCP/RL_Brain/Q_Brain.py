@@ -275,7 +275,7 @@ class Q_Brain(DecisionBrain):
         """
         # print("learn: ", prevState, action, reward, newState)
         if self.calcBellmanTimeDiscountHandler is not None:
-            timeDiscount = self.calcBellmanTimeDiscountHandler(self.chRTTEst.getEstVal(), self.chRTTVarEst.getEstVal())
+            timeDiscount = self.calcBellmanTimeDiscountHandler(self.chRTTEst.getEstVal(), self.chRTTVarEst.getEstVal(), prevState)
         else:
             timeDiscount = 1
 
@@ -293,6 +293,7 @@ class Q_Brain(DecisionBrain):
             setAColumn = True
             # setAColumn = False
         else:
+            # we retransmit the packet and the packet got delivered
             nextAction = np.argmax(self.QTable.getQ(state=newState))
             setAColumn = False
 
@@ -301,12 +302,19 @@ class Q_Brain(DecisionBrain):
             #     prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=0) + reward
             # else:
             #     prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=0) + reward
-
-            if nextAction == 0: # the only option next time is to drop it, 
-                prevStateQ_new = self.QTable.getQ(state=newState, action=0) + reward / (1-self.gamma)
-            else:
-                prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=1) + reward / (1-self.gamma)
             
+            # gammaFactor = self.gamma
+
+            """The modified Bellman's Equation in paper"""
+            if nextAction == 0: # the only option next time is to drop it, 
+                prevStateQ_new = self.gamma * self.QTable.getQ(state=newState, action=0) + reward #/ (1-self.gamma)
+            else:
+                prevStateQ_new = self.gamma * timeDiscount * self.QTable.getQ(state=newState, action=1) + reward # / (1-self.gamma)
+            # if nextAction == 0: # the only option next time is to drop it, 
+            #     prevStateQ_new = self.gamma * self.QTable.getQ(state=newState, action=0) + reward / (1-self.gamma)
+            # else:
+            #     prevStateQ_new = self.gamma * timeDiscount * self.QTable.getQ(state=newState, action=1) + reward / (1-self.gamma)
+
             # print(prevState, self.gamma, timeDiscount, nextStateQ_max, reward, prevStateQ_new)
 
         self.loss = np.abs(self.QTable.getQ(prevState, action) - prevStateQ_new)

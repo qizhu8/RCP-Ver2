@@ -394,6 +394,9 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
 
     serverPerfFilename = test_client.getProtocolName()+"_perf.pkl"
 
+    """
+    For UDP, ARQ and TCP new reno, we try to reload a previously stored dataset to save time
+    """
     if loadFromHistoryIfPossible and test_client.getProtocolName().lower() not in {"rcpdqn", "rcpq_learning", "rcprtq"}:
         if opts.nonRCPDatadir:  # stored in the specified temp folder
             serverPerfFilename = os.path.join(
@@ -446,7 +449,7 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
 
         # step 2: clients generate packets
         packetList_enCh = []
-        # for client in clientSet:
+        # we add some randomness to the packet enchannel order
         for clientId in np.random.permutation(len(clientList)):
             packetList_enCh += clientList[clientId].ticking(ACKPacketList)
 
@@ -490,9 +493,10 @@ def test_protocol(opts, channel, test_client, test_server, env_clients, env_serv
                 # client.transportObj.instance.perfDict["retranProb"] = retransProb
 
     test_server.storePerf(serverPerfFilename,
-                          clientPid=test_client.pid,
-                          distincPktsSent=test_client.getPktGen(),
-                          clientSidePerf=test_client.clientSidePerf())
+                          clientPid=test_client.pid,                    # save to key=clientPid
+                          distincPktsSent=test_client.getPktGen(),      # save to key=distincPktsSent
+                          clientSidePerf=test_client.clientSidePerf()   # save to key=clientSidePerf
+                          )
 
 
 def printTestProtocolPerf(opts, test_clients, test_servers, storePerfBrief=True):

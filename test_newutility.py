@@ -52,7 +52,7 @@ def run_test_beta(args):
     argList = [PYTHON3, "runTest.py",
                     "--testPeriod", "40000",
                     "--bgClientNum", "3",
-                    "--serviceRate", "3",
+                    "--serviceRate", "4",
                     "--pktDropProb", "0.3",
                     "--channelDelay","100", "150",
                     # "--fillChannel",
