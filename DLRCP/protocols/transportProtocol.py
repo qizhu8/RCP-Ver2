@@ -258,7 +258,7 @@ class BaseTransportLayerProtocol(object):
         return reward
 
     def calcPktUtility(self, chPktLoss, rtt, rto, pktTxAttempts):
-        # pktDelvy = theoTool.calc_delvy_rate_expect(chPktLoss, pktTxAttempts) # nonono, this means calculate utility
+        # pktDelvy = theoTool.calc_delvy_rate_expect(chPktLoss, pktTxAttempts) #
         pktDelvy = 1
         pktDelay = theoTool.calc_delay_expect(chPktLoss, rtt, rto, pktTxAttempts)
         reward = self.calcUtility(pktDelvy, pktDelay)
@@ -283,7 +283,7 @@ class BaseTransportLayerProtocol(object):
         r -= -1 # -1 is the minimum
         return r
 
-    def calcBellmanTimeDiscount_sumPower(self, rtt: float, rttvar: float, state: int) -> float:
+    def calcBellmanTimeDiscount_sumPower(self, rtt: float, rttvar: float, state: int, gamma: float) -> float:
         rto = rtt+4*rttvar
         discount = self.calcUtility(1, (state)*rto + rtt) / self.calcUtility(1, (state)*rto) # an approximation
         return discount
@@ -292,7 +292,7 @@ class BaseTransportLayerProtocol(object):
         r = (self.beta**(avgDelay / self.timeDivider)) * (delvyRate**self.alpha)
         return r
     
-    def calcBellmanTimeDiscount_timeDiscount(self, rtt:float, rttvar: float, state: int) -> float:
+    def calcBellmanTimeDiscount_timeDiscount(self, rtt:float, rttvar: float, state: int, gamma: float) -> float:
         rto = rtt+4*rttvar
         # discount = theoTool.calc_qij_approx_norm(self.beta, rtt, rttvar, 1, self.timeDivider)
         discount = self.calcUtility(1, (state)*rto + rtt) / self.calcUtility(1, (state)*rto) # almost the same as the above line, but much simplier

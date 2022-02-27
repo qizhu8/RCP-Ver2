@@ -272,19 +272,24 @@ class Q_Brain(DecisionBrain):
     def learnReward(self, prevState, action, reward, newState):
         """
         learnReward function is called when the packet reaches the final state (delivered or dropped). 
-        """
-        # print("learn: ", prevState, action, reward, newState)
-        if self.calcBellmanTimeDiscountHandler is not None:
-            timeDiscount = self.calcBellmanTimeDiscountHandler(self.chRTTEst.getEstVal(), self.chRTTVarEst.getEstVal(), prevState)
-        else:
-            timeDiscount = 1
 
-        # debug use
-        # if prevState == 2 and action == 1:
-        #     print("prev: {prevState} act: {action} reward: {reward} new: {newState}".format(
-        #       prevState=prevState, action=action, reward=reward, newState=newState  
-        #     ))
-       
+        e.g. 
+        (prevState, action, reward, newState) = (0, 1, 0.5, 1) means we retransmit a packet (action=1) when it was at state 0 (transmission zero time) and the new state of it is 1 (transmitted once)
+
+        """
+        # rtt = self.chRTTEst.getEstVal()
+        # rttvar = self.chRTTVarEst.getEstVal()
+        # rto = rtt + 4*rttvar
+        # r = (0.1**((rtt) / 100)) * (1**2)
+
+        # print("learn: ", prevState, action, reward, newState, r)
+
+
+        if self.calcBellmanTimeDiscountHandler is not None:
+            q_s = self.calcBellmanTimeDiscountHandler(self.chRTTEst.getEstVal(), self.chRTTVarEst.getEstVal(), newState, self.gamma)
+        else:
+            q_s = 1
+            
 
         if action == 0: # we have ignored the packet, no more gain
             # we want to smooth the reward
@@ -297,25 +302,23 @@ class Q_Brain(DecisionBrain):
             nextAction = np.argmax(self.QTable.getQ(state=newState))
             setAColumn = False
 
-            # """Original Bellman's Equation"""
-            # if nextAction == 0: # the only option next time is to drop it, 
-            #     prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=0) + reward
-            # else:
-            #     prevStateQ_new = timeDiscount * self.QTable.getQ(state=newState, action=0) + reward
-            
-            # gammaFactor = self.gamma
-
             """The modified Bellman's Equation in paper"""
             if nextAction == 0: # the only option next time is to drop it, 
-                prevStateQ_new = self.gamma * self.QTable.getQ(state=newState, action=0) + reward #/ (1-self.gamma)
+                prevStateQ_new = self.gamma * self.QTable.getQ(state=newState, action=0) + reward
             else:
-                prevStateQ_new = self.gamma * timeDiscount * self.QTable.getQ(state=newState, action=1) + reward # / (1-self.gamma)
-            # if nextAction == 0: # the only option next time is to drop it, 
-            #     prevStateQ_new = self.gamma * self.QTable.getQ(state=newState, action=0) + reward / (1-self.gamma)
-            # else:
-            #     prevStateQ_new = self.gamma * timeDiscount * self.QTable.getQ(state=newState, action=1) + reward / (1-self.gamma)
+                prevStateQ_new = self.gamma * q_s * self.QTable.getQ(state=newState, action=1) + reward
 
-            # print(prevState, self.gamma, timeDiscount, nextStateQ_max, reward, prevStateQ_new)
+            """From the optimal reward calculation formula"""
+            # if nextAction == 0: # the only option next time is to drop it, 
+            #     prevStateQ_new = self.gamma * self.QTable.getQ(state=newState, action=0) + reward * (1-self.gamma)
+            # else:
+            #     prevStateQ_new = self.gamma * q_s * self.QTable.getQ(state=newState, action=1) + reward * (1-self.gamma)
+            
+            """original Bellman's Equation"""
+            # if nextAction == 0: # the only option next time is to drop it, 
+            #     prevStateQ_new = self.QTable.getQ(state=newState, action=0) + reward 
+            # else:
+            #     prevStateQ_new = q_s * self.QTable.getQ(state=newState, action=1) + reward
 
         self.loss = np.abs(self.QTable.getQ(prevState, action) - prevStateQ_new)
 
@@ -323,7 +326,7 @@ class Q_Brain(DecisionBrain):
         self.QTable.setQ(prevState, action, prevStateQ_new, setAColumn=setAColumn)
         
         # print(self.QTable)
-
+        self.convergeLossThresh = self.QTable.getQ(prevState, 0) * 0.1
         super().learn()
 
     def loadModel(self, modelFile):

@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 
 import DLRCP.theoreticalAnalysis as theoTool
 
+imgExtensions = [".png", ".pdf"]
+
 
 # we have changed the protocol name multiple times... tired of that
 protocolName = {
@@ -93,7 +95,6 @@ def plot_one_attribute_csv(testPerfDicts, attributeName, configAttributeName, at
     plt.clf()
     imgDir = os.path.join(resultFolder, "summary")
     os.makedirs(imgDir, exist_ok=True)
-    imgPath = os.path.join(imgDir, attributeName + "_" + configAttributeName + ".pdf")
 
     timeDiscountList = [testPerfDicts[x][0] for x in orderedKey]
     for protocolId, protocol in enumerate(protocols):
@@ -107,7 +108,9 @@ def plot_one_attribute_csv(testPerfDicts, attributeName, configAttributeName, at
     plt.xlabel("$\eta$")
     plt.ylabel(attributeName)
     plt.legend()
-    plt.savefig(imgPath)
+    for imgExtension in imgExtensions:
+        imgPath = os.path.join(imgDir, attributeName + "_" + configAttributeName + imgExtension)
+        plt.savefig(imgPath)
     # plt.show()
     print("Generating", imgPath)
     return protocols, protocolPerf
@@ -230,7 +233,6 @@ def plot_one_attribute_pkl(resultFolder, testPerfDicts, configAttributeName, att
     plt.clf()
     imgDir = os.path.join(resultFolder, "summary")
     os.makedirs(imgDir, exist_ok=True)
-    imgPath = os.path.join(imgDir, attributeName + "_" + configAttributeName + ".pdf")
 
     timeDiscountList = perfVsConfigPermDf.index
     for protocolId, protocol in enumerate(perfVsConfigPermDf.columns):
@@ -243,7 +245,9 @@ def plot_one_attribute_pkl(resultFolder, testPerfDicts, configAttributeName, att
     plt.xlabel("$\eta$")
     plt.ylabel(attributeName)
     plt.legend()
-    plt.savefig(imgPath)
+    for imgExtension in imgExtensions:
+        imgPath = os.path.join(imgDir, attributeName + "_" + configAttributeName + imgExtension)
+        plt.savefig(imgPath)
     # plt.show()
     print("Generating", imgPath)
 
@@ -384,38 +388,41 @@ def plot_one_experiment_perf_time(resultFolder, testPerfDicts, configAttributeNa
 
             # RCP + Q Learning
             plt.clf()
-            imgPath = os.path.join(testPerfDicts[key][3], attributeName + "_" + protocolName["RCPQ_Learning"] +"_overtime" + ".pdf")
             plt.plot(list(range(len(RCPQ_Learning_data))), RCPQ_Learning_data, '-', color=protocolColor["RCPQ_Learning"], label=protocolName["RCPQ_Learning"],)
             # plt.xlabel(configAttributeName)
             plt.xlabel("time")
             plt.ylabel(attributeNameDict_pkl[attributeName])
             plt.legend()
-            plt.savefig(imgPath)
+            for imgExtension in imgExtensions:
+                imgPath = os.path.join(testPerfDicts[key][3], attributeName + "_" + protocolName["RCPQ_Learning"] +"_overtime" + imgExtension)
+                plt.savefig(imgPath)
             # plt.show()
             print("Generating", imgPath)
 
             # RCP Heuristic
             plt.clf()
-            imgPath = os.path.join(testPerfDicts[key][3], attributeName + "_" + protocolName["RCPRTQ"] +"_overtime" + ".pdf")
             plt.plot(list(range(len(RCPRTQ_data))), RCPRTQ_data, '-', color=protocolColor["RCPRTQ"], label=protocolName["RCPRTQ"],)
             # plt.xlabel(configAttributeName)
             plt.xlabel("time")
             plt.ylabel(attributeNameDict_pkl[attributeName])
             plt.legend()
-            plt.savefig(imgPath)
+            for imgExtension in imgExtensions:
+                imgPath = os.path.join(testPerfDicts[key][3], attributeName + "_" + protocolName["RCPRTQ"] +"_overtime" + imgExtension)
+                plt.savefig(imgPath)
             # plt.show()
             print("Generating", imgPath)
 
 
             plt.clf()
-            imgPath = os.path.join(testPerfDicts[key][3], attributeName + "_overtime" + ".pdf")
             plt.plot(list(range(len(RCPQ_Learning_data))), RCPQ_Learning_data, '-', color=protocolColor["RCPQ_Learning"], label=protocolName["RCPQ_Learning"],)
             plt.plot(list(range(len(RCPRTQ_data))), RCPRTQ_data, '-', color=protocolColor["RCPRTQ"], label=protocolName["RCPRTQ"],)
             # plt.xlabel(configAttributeName)
             plt.xlabel("time")
             plt.ylabel(attributeNameDict_pkl[attributeName])
             plt.legend()
-            plt.savefig(imgPath)
+            for imgExtension in imgExtensions:
+                imgPath = os.path.join(testPerfDicts[key][3], attributeName + "_overtime" + imgExtension)
+                plt.savefig(imgPath)
             # plt.show()
             print("Generating", imgPath)
 

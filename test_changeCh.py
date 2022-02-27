@@ -30,7 +30,7 @@ testPeriod = 40000
 
 channelInstructionList = [
     [0, "serviceRate", 7],
-    [10000, "serviceRate", 1],
+    [20000, "serviceRate", 1],
 ]
 
 
@@ -67,7 +67,7 @@ def run_test_beta(args):
     argList = [PYTHON3, "runTest.py",
                     "--testPeriod", str(int(testPeriod)),
                     "--bgClientNum", "0",
-                    "--serviceRate", "3",
+                    "--serviceRate", "4",
                     "--pktDropProb", "0.3",
                     "--channelDelay","100", "150",
                     # "--fillChannel",
