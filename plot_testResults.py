@@ -21,8 +21,8 @@ protocolName = {
     'ARQ_inf_wind': 'ARQ',
     'ARQ_finit_wind': 'ARQ finit window',
     'TCP_NewReno': 'TCP-NewReno',
-    'RCPQ_Learning': 'RTQ',
-    'RCPRTQ': 'Heuristic-RC' 
+    'RCPQ_Learning': 'QRCP', # the Q-Learning based policy
+    'RCPRTQ': 'CERCP'        # the control limit policy
 }
 protocolColor = {
     'UDP': 'blue',
