@@ -102,15 +102,16 @@ def main():
                 pool.join()
 
             
-
-            subprocess.run([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
-                        "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])
+            os.makedirs(os.path.join(resultFolderName, "summary"), exist_ok=True)
             
             # save the command to run the plot generation command
             cmd = " ".join([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
                         "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])
             with open(os.path.join(resultFolderName, "summary", "plot_cmd.sh"), 'w') as f:
                 f.write(cmd)
+            
+            subprocess.run([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
+                        "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])
                 
     endTime = time.time()
     print("running all simulations in ", endTime-startTime, " seconds")

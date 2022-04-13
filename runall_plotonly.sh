@@ -5,7 +5,9 @@ cp Results/case_study_w_TCP_TimeDiscount_alpha_2_0/summary/system\ utility_beta.
 # retransmission probability with \eta
 cp Results/case_study_w_TCP_TimeDiscount_alpha_2_0/summary/retransProb_beta.pdf Results/retransProb_beta-case\ study.pdf
 cp Results/case_study_w_TCP_TimeDiscount_alpha_2_0/summary/retransProb_beta.png Results/retransProb_beta-case\ study.png
-
+# retransmission probability with time of CERCP and QRCP
+cp Results/case_study_w_TCP_TimeDiscount_alpha_2_0/TimeDiscount_0_6_0/retransProb_overtime.pdf Results/retransProb_overtime.pdf
+cp Results/case_study_w_TCP_TimeDiscount_alpha_2_0/TimeDiscount_0_6_0/retransProb_overtime.png Results/retransProb_overtime.png
 
 # competing network
 /Library/Frameworks/Python.framework/Versions/3.8/bin/python3 plot_testResults.py --resultFolder Results/case_study_competition_TimeDiscount_alpha_2_0 --subFolderPrefix TimeDiscount --configAttributeName beta

@@ -22,7 +22,8 @@ protocolName = {
     'ARQ_finit_wind': 'ARQ finit window',
     'TCP_NewReno': 'TCP-NewReno',
     'RCPQ_Learning': 'QRCP', # the Q-Learning based policy
-    'RCPRTQ': 'CERCP'        # the control limit policy
+    'RCPRTQ': 'CERCP',       # the control limit policy
+    'RCPDQN': 'RCP-DQN',     # the DQN implementation
 }
 protocolColor = {
     'UDP': 'blue',
@@ -30,7 +31,8 @@ protocolColor = {
     'ARQ_finit_wind': 'yellow',
     'TCP_NewReno': 'black',
     'RCPQ_Learning': 'green',
-    'RCPRTQ': 'red' 
+    'RCPRTQ': 'red',
+    'RCPDQN': 'pink'
 }
 
 # protocols that will plot both overall performance and the last 25% time performance

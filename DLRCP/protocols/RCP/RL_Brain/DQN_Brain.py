@@ -118,9 +118,35 @@ class DQN_Brain(DecisionBrain):
 
     def saveModel(self):
         self.evalNet.saveModel()
+    
+    def _parseState(self, stateOrg):
+        """
+        The input state has eight features
+        1. number of transmission attemtps
+        2. Packet queuing time in client's buffer
+        3. Estimated RTT
+        4. Estimated packet loss probability of the channel
+        5. Current average delivery latency
+        6. RTT variance
+        7. RTO
+        8. System delivery rate
+        
+        The DQN module only takes in the first five features: 
+        1. number of transmission attemtps
+        2. Packet queuing time in client's buffer
+        3. Estimated RTT
+        4. Estimated packet loss probability of the channel
+        5. Current average delivery latency
+        """
+        return stateOrg[:self.nStates]
+
 
     def chooseMaxQAction(self, state, baseline_Q0=None):
-        """choose the action that counts for the maximum Q value"""
+        """
+        choose the action that counts for the maximum Q value
+        """
+        
+        state = self._parseState(state)
         state = torch.unsqueeze(torch.FloatTensor(
             state), 0).to(self.device)  # to vector
         actionRewards = self.evalNet.forward(state).cpu()
@@ -131,7 +157,7 @@ class DQN_Brain(DecisionBrain):
         return action
 
     def digestExperience(self, prevState, action, reward, curState):
-        self.memory.storeOneExperience(prevState, action, reward, curState)
+        self.memory.storeOneExperience(self._parseState(prevState), action, reward, self._parseState(curState))
         self.learningCounter = (self.learningCounter + 1) % self.learningPeriod
         # if self.learningCounter % self.learningPeriod == self.learningPeriod-1:
         self.learn()
