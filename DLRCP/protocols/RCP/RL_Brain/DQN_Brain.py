@@ -16,16 +16,22 @@ class DQNNet(nn.Module):
     def __init__(self, nStates, nActions):
         super(DQNNet, self).__init__()
 
-        # two layers
-        self.fc1 = nn.Linear(nStates, 20)
-        self.fc2 = nn.Linear(20, 30)
+        # one layer
+        self.fc1 = nn.Linear(nStates, 30)
         self.out = nn.Linear(30, nActions)
+
+        # two layers
+        # self.fc1 = nn.Linear(nStates, 20)
+        # self.fc2 = nn.Linear(20, 30)
+        # self.out = nn.Linear(30, nActions)
 
     def forward(self, state):
         # two layers
-        x = torch.sigmoid(self.fc1(state))
-        x = torch.sigmoid(self.fc2(x))
+        # x = torch.relu(self.fc1(state))
+        # x = torch.relu(self.fc2(x))
 
+        # one layer
+        x = torch.tanh(self.fc1(state))
         return self.out(x)
 
     def saveModel(self):
@@ -147,6 +153,10 @@ class DQN_Brain(DecisionBrain):
         """
         
         state = self._parseState(state)
+
+        if state[0] == 0: # transmit the first packet
+            return 1 
+
         state = torch.unsqueeze(torch.FloatTensor(
             state), 0).to(self.device)  # to vector
         actionRewards = self.evalNet.forward(state).cpu()
