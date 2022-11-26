@@ -45,14 +45,16 @@ def main():
     client_ARQ_finit, server_ARQ_finit = helper.genTestARQFiniteWindow(opts)
     client_ARQ_infinit, server_ARQ_infinit = helper.genTestARQinFiniteWindow(opts)
     client_NewReno, server_NewReno = helper.genTCPNewReno(opts)
+    client_Vegas, server_Vegas = helper.genTCPVegas(opts)
+    client_CTCP, server_CTCP = helper.genTCPCompond(opts)
     client_RL_Q, server_RL_Q = helper.genRCPQLearning(opts)
     client_RL_DQN, server_RL_DQN = helper.genRCPDQN(opts)
     client_RL_RTQ, server_RL_RTQ = helper.genRCPRTQ(opts)
 
     test_clients = client_UDP + client_ARQ_finit + \
-        client_ARQ_infinit + client_NewReno + client_RL_Q + client_RL_DQN + client_RL_RTQ
+        client_ARQ_infinit + client_NewReno + client_Vegas + client_CTCP + client_RL_Q + client_RL_DQN + client_RL_RTQ
     test_servers = server_UDP + server_ARQ_finit + \
-        server_ARQ_infinit + server_NewReno + server_RL_Q + server_RL_DQN + server_RL_RTQ
+        server_ARQ_infinit + server_NewReno + server_Vegas + server_CTCP + server_RL_Q + server_RL_DQN + server_RL_RTQ
 
     """
     Run the simulation for each test client and test server pair

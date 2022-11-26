@@ -88,6 +88,14 @@ def get_opts():
     # TCP NewReno
     parser.add_argument('--addNewReno', default=False, action='store_true',
                         help="whether to add TCP New Reno to test")
+    
+    # TCP Vegas
+    parser.add_argument('--addVegas', default=False, action='store_true',
+                        help="whether to add TCP Vegas to test")
+    
+    # TCP CompondTCP
+    parser.add_argument('--addCTCP', default=False, action='store_true',
+                        help="whether to add TCP Compond to test")
 
     # RCP-QLearning
     parser.add_argument('--addRCPQLearning', default=False, action='store_true',
@@ -296,6 +304,43 @@ def genTCPNewReno(opts):
         return [client_TCP_Reno], [server_TCP_Reno]
     return [], []
 
+def genTCPVegas(opts):
+    if opts.addVegas:
+        client_TCP_Reno = EchoClient(
+            clientId=421, serverId=431,
+            # IW=2 if SMSS>2190, IW=3 if SMSS>3, else IW=4
+            protocolName="tcp_vegas", transportParam={
+                "timeout": 30, "IW": 4,
+                # utility
+                "utilityMethod": opts.utilityMethod,
+                "alpha": opts.alpha,
+                "timeDivider": opts.timeDivider,
+                "beta": opts.beta,
+            },
+            trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": opts.pktRate},
+            verbose=False)
+        server_TCP_Reno = EchoServer(serverId=431, ACKMode="LC", verbose=False)
+        return [client_TCP_Reno], [server_TCP_Reno]
+    return [], []
+
+def genTCPCompond(opts):
+    if opts.addCTCP:
+        client_TCP_Reno = EchoClient(
+            clientId=441, serverId=451,
+            # IW=2 if SMSS>2190, IW=3 if SMSS>3, else IW=4
+            protocolName="tcp_ctcp", transportParam={
+                "timeout": 30, "IW": 4,
+                # utility
+                "utilityMethod": opts.utilityMethod,
+                "alpha": opts.alpha,
+                "timeDivider": opts.timeDivider,
+                "beta": opts.beta,
+            },
+            trafficMode="periodic", trafficParam={"period": 1, "pktsPerPeriod": opts.pktRate},
+            verbose=False)
+        server_TCP_Reno = EchoServer(serverId=451, ACKMode="LC", verbose=False)
+        return [client_TCP_Reno], [server_TCP_Reno]
+    return [], []
 
 def genRCPQLearning(opts):
     if opts.addRCPQLearning:

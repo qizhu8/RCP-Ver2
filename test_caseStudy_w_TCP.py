@@ -64,6 +64,8 @@ def run_test_beta(args):
                     #add test protocol
                     "--addUDP",
                     "--addNewReno",
+                    "--addVegas",
+                    "--addCTCP",
                     "--addARQInfinite",
                     # "--addARQFinite",
                     "--addRCPQLearning",

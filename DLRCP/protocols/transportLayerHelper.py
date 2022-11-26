@@ -2,7 +2,7 @@ import logging
 
 from .transportProtocol import BaseTransportLayerProtocol
 from .RCP import RCP
-from .TCP import TCP_NewReno, Window_ARQ
+from .TCP import TCP_NewReno, Window_ARQ, TCP_Vegas, TCP_CTCP
 from .UDP import UDP
 
 
@@ -18,6 +18,8 @@ class TransportLayerHelper(object):
             "window arq": Window_ARQ,
             "rcp": RCP,
             "tcp_newreno": TCP_NewReno,
+            "tcp_vegas": TCP_Vegas,
+            "tcp_ctcp": TCP_CTCP
         }
         self.suid = suid
         self.duid = duid
