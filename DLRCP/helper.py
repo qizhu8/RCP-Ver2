@@ -122,6 +122,8 @@ def get_opts():
                         help="whether to add RCP-RTQ to test")
 
     # Additional options
+    parser.add_argument('--no-load-status', dest='load_status_if_possible',
+                        default=True, action='store_false', help="not load stored state")
     parser.add_argument('--clean-run', dest='clean_run',
                         default=False, action='store_true')
 

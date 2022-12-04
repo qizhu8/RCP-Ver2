@@ -273,7 +273,7 @@ class BaseTransportLayerProtocol(object):
         # This is also the primary motivation of the new version of RCP.
         #"""
         UDP_dlvy, UDP_dly = 0.591*0.9, 124.562*0.9
-        ARQ_dlvy, ARQ_dly = 0.734*1.1, 626.128*1.1
+        ARQ_dlvy, ARQ_dly = 0.765*1.1, 754.307*1.1
         
         delvyRate = (delvyRate - UDP_dlvy) / (ARQ_dlvy - UDP_dlvy)
         avgDelay = (avgDelay - UDP_dly) / (ARQ_dly-UDP_dly)

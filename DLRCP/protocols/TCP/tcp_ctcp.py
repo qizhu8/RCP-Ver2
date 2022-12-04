@@ -178,7 +178,7 @@ class TCP_CTCP(BaseTransportLayerProtocol):
                     if self.cwnd < self.ssthresh and diff < self.ctcp_gamma:
                         cwndIncrement_SS()
                     elif diff < self.ctcp_gamma:
-                        self.cwnd += self.ctcp_alpha * (self.cwnd ** self.ctcp_k)
+                        self.cwnd += int(self.ctcp_alpha * (self.cwnd ** self.ctcp_k))
                         
                         adder = 1
                         self.lwnd += adder
@@ -189,7 +189,7 @@ class TCP_CTCP(BaseTransportLayerProtocol):
                         self.m_lwnd += adder
                         dwndInPackets = self.dwnd / self.cwnd
                         dwndInPackets = max(0, dwndInPackets - self.ctcp_eta*diff)
-                        self.dwnd = dwndInPackets * self.cwnd
+                        self.dwnd = int(dwndInPackets * self.cwnd)
                         self.cwnd = self.lwnd + self.dwnd
                 
                 

@@ -19,17 +19,17 @@ if len(sys.argv) >= 2:
 
 PYTHON3 = sys.executable  # get the python interpreter
 
-
-# utilityMethodList = ["TimeDiscount", "SumPower"]
+experimentDesc = "dynamic_channel_error"
 utilityMethodList = ["TimeDiscount"]
-# utilityMethodList = ["SumPower"]
 alphaList = [2]
 alphaDigitPrecision = 2
-# alphaList = [0.5, 1, 2, 3, 4]
-betaList = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-betaDigitPrecision = 3 # number of digits to represent beta
+betaList = [0.8]
 # betaList = [0.8]
-# betaList = [0.9]
+betaDigitPrecision = 3 # number of digits to represent beta
+errorList = [0.0, 0.05, 0.10, 0.15, 0.2, 0.25, 0.3]
+errorDigitPrecision = 3
+testPeriod = 40000
+
 
 def serializeDigit(num, digitPrec):
     """
@@ -42,17 +42,30 @@ def serializeDigit(num, digitPrec):
         num *= 10
     return s
 
+def formulateChInstructions(chInstructList):
+    """
+    insList = ['10', 'serviceRate', '3', '20', 'channelDelay', '100,200', '30', 'channelDelay', '100','nonsense']
+    """
+    insList = []
+    for ins in chInstructList:
+        t, attrib, value = ins
+        insList.append(str(int(t)))
+        insList.append(str(attrib))
+        insList.append(str(value))
+    return " ".join(insList)
+
+
 def run_test_beta(args):
-    beta, alpha, utilityMethod, resultFolderName, tempFileFolderName = args
-    print("conducting experiment for ", utilityMethod, " beta=", beta)
-    testDesc = utilityMethod+"_{serializedDigit}".format(
-        serializedDigit="_".join(serializeDigit(beta, betaDigitPrecision))
+    beta, alpha, errorRate, utilityMethod, resultFolderName, tempFileFolderName = args
+    print("conducting experiment for ", utilityMethod, " error rate =", errorRate)
+    testDesc = "channel_error"+"_{serializedDigit}".format(
+        serializedDigit="_".join(serializeDigit(errorRate, errorDigitPrecision))
     )
     argList = [PYTHON3, "runTest.py",
-                    "--testPeriod", "40000",
+                    "--testPeriod", str(int(testPeriod)),
                     "--bgClientNum", "0",
                     "--serviceRate", "4",
-                    "--pktDropProb", "0.3",
+                    "--pktDropProb", str(errorRate),
                     "--channelDelay","100", "150",
                     # "--fillChannel",
                     "--utilityMethod", utilityMethod,
@@ -61,15 +74,17 @@ def run_test_beta(args):
                     "--data-dir", resultFolderName,
                     "--nonRCPDatadir", tempFileFolderName,
                     "--alpha", str(alpha),
-                    #add test protocol
+                    #add test protocols
                     "--addUDP",
-                    "--addNewReno",
                     "--addARQInfinite",
                     # "--addARQFinite",
                     "--addRCPQLearning",
-                    "--addRCPDQN",
+                    # "--addRCPDQN",
                     "--addRCPRTQ",
+                    "--no-load-status", # we shouldn't load previously stored UDP and ARQ status due to the changes of channel
                     ]
+    # whether to use multi-processing to run the test of different protocols
+    # Appropriate for the first test
 
     subprocess.run(argList)
 
@@ -80,14 +95,15 @@ def main():
             alpha_desc = "_".join(serializeDigit(alpha, alphaDigitPrecision))
 
             resultFolderName = os.path.join(
-                "Results", "case_study_w_DQN_" + utilityMethod+"_alpha_"+alpha_desc)
+                "Results", experimentDesc + "_" + "channel_error" + "_alpha_"+alpha_desc)
 
             tempFileFolderName = os.path.join(resultFolderName, "tempResult")
 
             argList = []
-            for expId, beta in enumerate(betaList):
-                args = [beta, alpha, utilityMethod, resultFolderName, tempFileFolderName]
-                argList.append(args)
+            for beta in betaList:
+                for errorRate in errorList:
+                    args = [beta, alpha, errorRate, utilityMethod, resultFolderName, tempFileFolderName]
+                    argList.append(args)
             
             # must run one test to generate the temp result for UDP/ARQ
             run_test_beta(argList[0])
@@ -95,26 +111,25 @@ def main():
             # use multiprocessing to generate the remaining test results
             n_worker = multiprocessing.cpu_count()
             needed_worker = min(n_worker-1, len(argList[1:]))
-            if needed_worker > 0: # we still have work to do
+            if needed_worker:
                 pool = multiprocessing.Pool(processes=needed_worker)
                 pool.map(run_test_beta, argList[1:])
                 pool.close()
                 pool.join()
 
 
-            # save the command to run the plot generation command
             os.makedirs(os.path.join(resultFolderName, "summary"), exist_ok=True)
+            # save the command to run the plot generation command
             cmd = " ".join([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
-                        "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])
+                        "--subFolderPrefix", "channel_error", "--configAttributeName", 'beta'])
             with open(os.path.join(resultFolderName, "summary", "plot_cmd.sh"), 'w') as f:
                 f.write(cmd)
 
             subprocess.run([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
-                        "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])
-           
+                        "--subFolderPrefix", "channel_error", "--configAttributeName", 'pktDropProb'])
+            
                 
     endTime = time.time()
     print("running all simulations in ", endTime-startTime, " seconds")
-
 if __name__ == "__main__":
     main()

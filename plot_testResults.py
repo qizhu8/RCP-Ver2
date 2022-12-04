@@ -14,13 +14,18 @@ import DLRCP.theoreticalAnalysis as theoTool
 
 imgExtensions = [".png", ".pdf"]
 
+class DummyClass:
+    def __init__(self):
+        self.attr = ""
 
 # we have changed the protocol name multiple times... tired of that
 protocolName = {
     'UDP': 'UDP',
-    'ARQ_inf_wind': 'ARQ',
+    'ARQ_inf_wind': 'UDP with ARQ',
     'ARQ_finit_wind': 'ARQ finit window',
     'TCP_NewReno': 'TCP-NewReno',
+    'TCP_Vegas': 'TCP-Vegas',
+    'TCP_CTCP': "Compound TCP",
     'RCPQ_Learning': 'QRCP', # the Q-Learning based policy
     'RCPRTQ': 'CERCP',       # the control limit policy
     'RCPDQN': 'RCP-DQN',     # the DQN implementation
@@ -30,9 +35,16 @@ protocolColor = {
     'ARQ_inf_wind': 'orange',
     'ARQ_finit_wind': 'yellow',
     'TCP_NewReno': 'black',
+    'TCP_Vegas': 'darkgray',
+    'TCP_CTCP': 'wheat',
     'RCPQ_Learning': 'green',
     'RCPRTQ': 'red',
     'RCPDQN': 'pink'
+}
+
+labelDisplay = {
+    "beta": r"$\beta$",
+    "pktDropProb": r"$\gamma$"
 }
 
 # protocols that will plot both overall performance and the last 25% time performance
@@ -106,8 +118,8 @@ def plot_one_attribute_csv(testPerfDicts, attributeName, configAttributeName, at
     
     """We also want to plot the last 25% time performance of RTQ"""
     
-    # plt.xlabel(configAttributeName)
-    plt.xlabel("$\eta$")
+    plt.xlabel(labelDisplay[configAttributeName])
+    # plt.xlabel("$\eta$")
     plt.ylabel(attributeName)
     plt.legend()
     for imgExtension in imgExtensions:
@@ -444,8 +456,11 @@ if __name__ == "__main__":
     parser.add_argument('--configAttributeName', type=str, default= 'beta',
                         help='the attribute name that changes among the experimetns')
 
-
     opts = parser.parse_args()
+    # opts = DummyClass()
+    # opts.resultFolder = "Results/dynamic_channel_error_TimeDiscount_alpha_2_0"
+    # opts.subFolderPrefix = "TimeDiscount"
+    # opts.configAttributeName = "pktDropProb"
 
     for attributeName in attributeNameDict_csv:
         process_one_attribute_csv(opts.resultFolder, opts.subFolderPrefix, opts.configAttributeName, attributeName)

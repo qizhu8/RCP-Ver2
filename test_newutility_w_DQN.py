@@ -21,15 +21,15 @@ PYTHON3 = sys.executable  # get the python interpreter
 
 
 # utilityMethodList = ["TimeDiscount", "SumPower"]
-utilityMethodList = ["TimeDiscount"]
-# utilityMethodList = ["SumPower"]
+# utilityMethodList = ["TimeDiscount"]
+utilityMethodList = ["SumPower"]
 alphaList = [2]
 alphaDigitPrecision = 2
 # alphaList = [0.5, 1, 2, 3, 4]
 betaList = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
 betaDigitPrecision = 3 # number of digits to represent beta
 # betaList = [0.8]
-# betaList = [0.9]
+# betaList = [0.9, 1]
 
 def serializeDigit(num, digitPrec):
     """
@@ -42,6 +42,7 @@ def serializeDigit(num, digitPrec):
         num *= 10
     return s
 
+
 def run_test_beta(args):
     beta, alpha, utilityMethod, resultFolderName, tempFileFolderName = args
     print("conducting experiment for ", utilityMethod, " beta=", beta)
@@ -50,7 +51,7 @@ def run_test_beta(args):
     )
     argList = [PYTHON3, "runTest.py",
                     "--testPeriod", "40000",
-                    "--bgClientNum", "0",
+                    "--bgClientNum", "3",
                     "--serviceRate", "4",
                     "--pktDropProb", "0.3",
                     "--channelDelay","100", "150",
@@ -61,15 +62,17 @@ def run_test_beta(args):
                     "--data-dir", resultFolderName,
                     "--nonRCPDatadir", tempFileFolderName,
                     "--alpha", str(alpha),
-                    #add test protocol
+                    #add test protocols
                     "--addUDP",
-                    "--addNewReno",
                     "--addARQInfinite",
                     # "--addARQFinite",
                     "--addRCPQLearning",
                     "--addRCPDQN",
-                    "--addRCPRTQ",
+                    # "--addRCPRTQ", # RTQ cannot work with this utility function
+                    "--utilityMethod", "SumPower"
                     ]
+    # whether to use multi-processing to run the test of different protocols
+    # Appropriate for the first test
 
     subprocess.run(argList)
 
@@ -78,9 +81,9 @@ def main():
     for utilityMethod in utilityMethodList:
         for alpha in alphaList:
             alpha_desc = "_".join(serializeDigit(alpha, alphaDigitPrecision))
-
+            
             resultFolderName = os.path.join(
-                "Results", "case_study_w_DQN_" + utilityMethod+"_alpha_"+alpha_desc)
+                "Results", "case_newutility_w_DQN_" + utilityMethod+"_alpha_"+alpha_desc)
 
             tempFileFolderName = os.path.join(resultFolderName, "tempResult")
 
@@ -95,15 +98,15 @@ def main():
             # use multiprocessing to generate the remaining test results
             n_worker = multiprocessing.cpu_count()
             needed_worker = min(n_worker-1, len(argList[1:]))
-            if needed_worker > 0: # we still have work to do
+            if needed_worker:
                 pool = multiprocessing.Pool(processes=needed_worker)
                 pool.map(run_test_beta, argList[1:])
                 pool.close()
                 pool.join()
 
 
-            # save the command to run the plot generation command
             os.makedirs(os.path.join(resultFolderName, "summary"), exist_ok=True)
+            # save the command to run the plot generation command
             cmd = " ".join([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
                         "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])
             with open(os.path.join(resultFolderName, "summary", "plot_cmd.sh"), 'w') as f:
@@ -111,10 +114,8 @@ def main():
 
             subprocess.run([PYTHON3, "plot_testResults.py", "--resultFolder", resultFolderName,
                         "--subFolderPrefix", utilityMethod, "--configAttributeName", 'beta'])
-           
-                
+
     endTime = time.time()
     print("running all simulations in ", endTime-startTime, " seconds")
-
 if __name__ == "__main__":
     main()

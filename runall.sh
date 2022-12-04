@@ -20,7 +20,19 @@ cp Results/case_newutility_SumPower_alpha_2_0/summary/system\ utility_beta.pdf R
 cp Results/case_newutility_SumPower_alpha_2_0/summary/system\ utility_beta.png Results/system\ utility-newutility.png
 
 
+# change channel service rate 
 python3 test_changeCh.py
 # retransmission probability of RCP over time
 cp Results/case_study_w_TCP_TimeDiscount_alpha_2_0/TimeDiscount_0_3_0/retransProb_overtime.pdf Results/change_of_retransProb_time_RTQ-dynamic\ channel.pdf
 cp Results/case_study_w_TCP_TimeDiscount_alpha_2_0/TimeDiscount_0_3_0/retransProb_overtime.png Results/change_of_retransProb_time_RTQ-dynamic\ channel.png
+
+
+# change channel error rate
+python3 test_changeErrorRate.py
+cp Results/dynamic_channel_error_channel_error_alpha_2_0/summary/system\ utility_pktDropProb.pdf Results/system\ utility-errorrate.pdf
+cp Results/dynamic_channel_error_channel_error_alpha_2_0/summary/system\ utility_pktDropProb.png Results/system\ utility-errorrate.png
+
+# change alpha=1
+python3 test_changeAlpha1.py
+cp Results/dynamic_channel_TimeDiscount_alpha_1_0/summary/system\ utility_beta.pdf Results/system\ utility-alpha1.pdf
+cp Results/dynamic_channel_TimeDiscount_alpha_1_0/summary/system\ utility_beta.png Results/system\ utility-alpha1.png

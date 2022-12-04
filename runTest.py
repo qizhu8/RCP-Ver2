@@ -67,7 +67,7 @@ def main():
             test_server=test_server, 
             env_clients=env_clients, 
             env_servers=env_servers, 
-            loadFromHistoryIfPossible=not opts.clean_run)
+            loadFromHistoryIfPossible=opts.load_status_if_possible)
 
     """
     Print the summary of the final result

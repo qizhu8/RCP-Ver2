@@ -1,3 +1,6 @@
 numpy>=1.19.0
 tabulate>=0.8.7
 torch>=1.7.0
+matplotlib
+pandas
+scipy
